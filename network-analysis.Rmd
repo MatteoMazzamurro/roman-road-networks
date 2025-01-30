@@ -1,0 +1,2607 @@
+---
+title: "network-analysis"
+author: "Matteo Mazzamurro"
+date: "2024-12-02"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Summary TO DO
+This code allows to reproduce the network analysis in the paper on Roman roads. 
+It includes the computation of classic global properties, geometric properties, and centrality. It compares the network with geometric models, and assesses the robustness of the results when a certain percentage of uncertain roads is omitted.
+## Preliminaries
+### R version and packages
+This document uses R version 4.3.0 (2023-04-21 ucrt). 
+It relies on the following packages:
+```{r required packages}
+required_packages <- c("tidyverse",
+                       "sf",
+                       "dplyr",
+                       "spatstat",
+                       "raster",
+                       "units",
+                       "igraph",
+                       "sfnetworks",
+                       "spatgraphs",
+                       "ggraph",
+                       "ggspatial",
+                       "RColorBrewer",
+                       "colorRamps",
+                       "cowplot",
+                       "deldir",
+                       "cccd",
+                       "DescTools")
+```
+
+*tidyverse* and *dplyr* offer a collection of methods for data analysis, that we use for data cleaning and visualisation. We use *sf* to read and handle shapefiles, *spatstat* for point processes and observation windows, *raster* to manage the coordinate projections, and *units* to ensure correct handling of distance units. We use *igraph* and *sfnetworks* to construct our network objects. *ggraph* allows to visualise graph objects based on the ggplot2 framework (ggplot2 is included in tidyverse), and *ggspatial* adds other visual features for maps. *RColorBrewer* and *colorRamps* allow efficient management of colours, and *cowplot* is used to create separate images of legends. *deldir*, *spatgraphs*, and *cccd* are used to create spatial graph models. Finally *DescTools* is used to compute the Gini coefficient of inequality. 
+
+One needs to install them if they are not installed yet.
+```{r install packages}
+packages_to_install <- required_packages[!(required_packages %in% installed.packages()[,"Package"])]
+if(length(packages_to_install)) install.packages(packages_to_install)
+```
+
+Finally, one needs to load them
+```{r load packages}
+invisible(lapply(required_packages, library, character.only = TRUE))
+```
+
+Note that we use the following versions of the packages:
+* tidyverse     2.0.0
+* dplyr         1.1.4
+* sf            1.0.13
+* spatstat      3.0.7
+* raster        3.6.26
+* units         0.8.2
+* igraph        1.4.3
+* sfnetworks    0.6.3
+* spatgraphs    3.4
+* ggraph        2.1.0
+* ggspatial     1.1.9
+* RColorBrewer  1.1.3
+* colorRamps    2.3.1
+* cowplot       1.1.3
+* deldir        1.0.9
+* cccd          1.6
+* Desktool      0.99.58
+
+If a package has been updated since the release of this code, using the newer version may cause issues.
+If this is the case, one can try to solve them by installing the specific versions of the packages by uncommenting and running the following code. 
+Note, however, that these older versions of the packages may not be available for newer versions of R, in which case it will be necessary to switch to an older version of R to run the code (please refer to the cran.r website on how to do that: https://cran.r-project.org/index.html).
+```{r install specific package versions}
+# #install devtools if not already installed
+# if (!"devtools" %in% installed.packages()[,"Package"]) install.packages("devtools")
+# 
+# #load devtools
+# library(devtools)
+# 
+# #install specific versions of the packages
+# install_version("tidyverse", version = "2.0.0")
+# install_version("dplyr", version = "1.1.4")
+# install_version("sf", version = "1.0.13")
+# install_version("spatstat", version = "3.0.7")
+# install_version("raster", version = "3.6.26")
+# install_version("units", version = "0.8.2")
+# install_version("igraph", version = "1.4.3")
+# install_version("sfnetworks", version = "0.6.3")
+# install_version("spatgraphs", version = "3.4")
+# install_version("ggraph", version = "2.1.0")
+# install_version("ggspatial", version = "1.1.9")
+# install_version("RColorBrewer", version = "1.1.3")
+# install_version("colorRamps", version = "2.3.1")
+# install_version("cowplot", version = "1.1.3")
+# install_version("deldir", version = "1.0.9")
+# install_version("cccd", version = "1.6")
+# 
+# #load packages
+# invisible(lapply(required_packages_analysis, library, character.only = TRUE))
+```
+
+### Data
+First import the original data
+```{r load original data}
+# roads
+roads_sf <- read_sf("./data/roman_roads/roman_roads.shp")
+
+# provinces
+provinces_sf <- read_sf("./data/roman_provinces/roman_provinces.shp") 
+
+# cities
+cities_df <- read.csv("./data/Hanson_size_population.csv")
+
+# provincial capitals
+provincial_capitals_df <- read.csv("./data/provincial_capitals.csv") 
+
+# Pleiades
+Pleiades_sf <- read_sf("./data/ancient_sites_pleiades/pleiades_sett_vil_st_fort.shp") 
+
+# world map (for visualisation purposes)
+world_sf <- read_sf("./data/world_administrative_boundaries/world_administrative_boundaries.shp")
+
+# read gdb
+## The ESRI world road network can be downloaded from https://www.arcgis.com/home/item.html?id=83535020ce154bd5a498957c159e3a99. 
+## Use 7-zip to unzip the lpk file and place it in the data folder for this project. 
+## Then read the .gdb as an sf. 
+modern_roads_sf <- read_sf("./data/World_Roads/v10/roads.gdb") 
+```
+
+Ensure that all the data is in sf format, contains only valid columns, and is in the same coordinate reference system (epsg:4326)
+```{r harmonise data type, columns, and crs}
+# roads
+roads_sf$LENGTH_GEO <- ifelse(roads_sf$LENGTH_GEO>0, roads_sf$LENGTH_GEO, roads_sf$lengthGeo)
+roads_sf <- roads_sf %>% 
+  dplyr::select(-Shape_Leng,-lengthGeo) %>%
+  st_transform(crs=crs("epsg:4326")) %>%
+  st_zm(drop = TRUE)
+
+# provinces
+provinces_sf <- provinces_sf %>%
+  dplyr::select(province, Shape_Area, geometry) %>%
+  st_transform(crs=crs("epsg:4326")) %>%
+  st_zm(drop = TRUE)
+
+# cities
+cities_sf <- cities_df %>% 
+  dplyr::select(-province) %>%
+  st_as_sf(coords = c("lon","lat"),
+           crs = crs("epsg:4326")) 
+
+# capital cities
+provincial_capitals_sf <- st_as_sf(
+  provincial_capitals_df,
+  coords = c("lon","lat"),
+  crs = crs("epsg:4326"))
+
+# Pleiades
+Pleiades_sf <- Pleiades_sf %>% 
+  st_transform(crs=crs("epsg:4326")) 
+
+# world
+world_sf <- world_sf %>% 
+  st_transform(crs=crs("epsg:4326"))
+
+# world without borders
+world_nb_sf <-  world_sf %>% 
+  st_union()
+
+# Identify countries that intersect any province
+intersects <- st_intersects(world_sf, provinces_sf)
+countries_sf <- world_sf[lengths(intersects) > 0, ] %>%
+  dplyr::select(iso3, geometry) %>%
+  rename(country = iso3) %>%
+  na.omit() 
+  
+# merge two Palestinian territories as one
+countries_sf <- countries_sf %>%  
+  group_by(country) %>%              
+  summarise(geometry = st_union(geometry)) %>%  
+  ungroup() 
+
+# remove microstates and negligible intersections
+countries_sf <- countries_sf %>% 
+  filter(!country %in% c("UKR","SVK","VAT","LIE", "MCO", "AND", "GIB", "SDN","SMR"))
+
+# exclude ferries
+modern_roads_sf <- modern_roads_sf %>% filter(TYPE != "Ferry")
+```
+
+Now, classify the roads and sites by provinces and create lists of shapefiles for the empire and individual provinces
+```{r roads, cities, and sites by provinces}
+# extract names of geographical units
+provinces <- provinces_sf$province
+countries <- countries_sf$country
+geographical_units <-  c("Empire",provinces,countries, "Italia")
+
+# define "Italia" as a special study region
+Italia_provinces <- provinces[str_detect(provinces,"Regio")]
+Italia_sf <- provinces_sf %>%
+  filter(province %in% Italia_provinces) %>% 
+  st_union()
+
+# data by province
+roads_with_provinces_sf <- st_join(roads_sf, provinces_sf, join = st_intersects)
+cities_with_provinces_sf <- st_join(cities_sf, provinces_sf, join = st_intersects)
+Pleiades_with_provinces_sf <- st_join(Pleiades_sf, provinces_sf, join = st_intersects)
+modern_roads_with_provinces_sf <- st_join(modern_roads_sf, provinces_sf, join = st_intersects)
+
+# for modern roads, select only area within provinces and transform multilinestrings into linestring
+modern_roads_with_provinces_sf <- modern_roads_with_provinces_sf[!is.na(modern_roads_with_provinces_sf$province),]
+modern_roads_with_provinces_sf <- modern_roads_with_provinces_sf %>%
+                                                  st_line_merge() %>%
+                                                  st_cast("LINESTRING")
+
+# data by country
+roads_with_countries_sf <- st_join(roads_sf, countries_sf, join = st_intersects)
+cities_with_countries_sf <- st_join(cities_sf, countries_sf, join = st_intersects)
+Pleiades_with_countries_sf <- st_join(Pleiades_sf, countries_sf, join = st_intersects)
+
+# function to define named lists of shapefiles
+by_province_l_f <- function(df){
+  if ("province" %in% names(df)){
+    df_by_province_l <- df %>%
+      filter(!is.na(province)) %>%
+      group_split(province) %>%
+      setNames(provinces[provinces %in% df$province])
+    return(df_by_province_l)
+  } else {
+    stop("The dataframe does not contain information on provinces")
+  }
+} 
+
+# function to define named lists of shapefiles
+by_country_l_f <- function(df){
+  if ("country" %in% names(df)){
+    df_by_country_l <- df %>%
+      filter(!is.na(country)) %>%
+      group_split(country) %>%
+      setNames(countries[countries %in% df$country])
+    return(df_by_country_l)
+  } else {
+    stop("The dataframe does not contain information on countries")
+  }
+} 
+
+# define list of province shapefiles
+roads_sf_provinces_l <- by_province_l_f(roads_with_provinces_sf)
+cities_sf_provinces_l <- by_province_l_f(cities_with_provinces_sf)
+Pleiades_sf_provinces_l <- by_province_l_f(Pleiades_with_provinces_sf)
+modern_roads_sf_provinces_l <- by_province_l_f(modern_roads_with_provinces_sf)
+
+# define list of country shapefiles
+roads_sf_countries_l <- by_country_l_f(roads_with_countries_sf)
+cities_sf_countries_l <- by_country_l_f(cities_with_countries_sf)
+Pleiades_sf_countries_l <- by_country_l_f(Pleiades_with_countries_sf)
+
+# shapefiles for Italia
+roads_sf_Italia <- roads_sf %>%
+  filter(st_intersects(., Italia_sf, sparse = FALSE))
+cities_sf_Italia <-  cities_sf %>%
+  filter(st_intersects(., Italia_sf, sparse = FALSE))
+Pleiades_sf_Italia <- Pleiades_sf %>%
+  filter(st_intersects(., Italia_sf, sparse = FALSE))
+
+# initialise lists of shapefiles
+roads_sf_l <- list()
+cities_sf_l <- list()
+Pleiades_sf_l <- list()
+
+# populate lists
+roads_sf_l <- roads_sf_l %>%
+  append(list(Empire = roads_sf)) %>%       # add Empire
+  append(roads_sf_provinces_l) %>%          # add provinces
+  append(roads_sf_countries_l) %>%          # add countries
+  append(list(Italia= roads_sf_Italia))     # add Italia
+cities_sf_l <- cities_sf_l %>%
+  append(list(Empire = cities_sf)) %>%      # add Empire
+  append(cities_sf_provinces_l) %>%         # add provinces
+  append(cities_sf_countries_l) %>%         # add countries
+  append(list(Italia = cities_sf_Italia))   # add Italia
+Pleiades_sf_l <- Pleiades_sf_l %>%
+  append(list(Empire = Pleiades_sf)) %>%    # add Empire
+  append(Pleiades_sf_provinces_l) %>%       # add provinces
+  append(Pleiades_sf_countries_l) %>%       # add countries
+  append(list(Italia = Pleiades_sf_Italia)) # add Italia
+```
+
+## Ancient networks construction
+Use the above shapefiels to build road networks by geographical unit
+```{r build roads networks}
+# list of networks by province and in the entire empire
+road_networks_l <- lapply(roads_sf_l,
+                          as_sfnetwork,
+                          directed = FALSE)
+
+# assign time to transverse a road as as weight
+road_networks_l <- lapply(road_networks_l, function(g){
+  # extract info
+  length <- E(g)$LENGTH_GEO
+  slope <- E(g)$Avg_Slope/100
+  pace <- 3/5*exp(7/2*(abs(slope+0.05))) #Tobler's formula
+  weight = length*pace
+  
+  # assign
+  E(g)$weight <- weight
+  return(g)
+})
+```
+
+## Analysis
+### Global properties
+#### Classic networks
+First, we compute global network properties:
+* the global clustering coefficient, i.e., a single value that denotes the number of closed triangles in the network divided by the number of node triplets in the network.
+* the average local clustering coefficient over all nodes, where the local clustering coefficient is the number of links connecting the nodes in a node's neighbourhood divided by the maximum possible number of links between them.
+* the density, i.e., the number of links in the network divided by the maximum theoretical number of links 
+* the gamma index, i.e., the density with respect to the maximum number of links in a planar graph 3*(v-2)
+* number of components
+* size of the largest components
+* meshedness of the largest component
+```{r global network properties}
+# number of nodes
+number_of_nodes_df <- road_networks_l %>% 
+  lapply(vcount) %>%
+  utils::stack() %>%
+  dplyr::select(ind, values) %>%
+  setNames(c("geographical unit","number of nodes"))
+
+# number of edges
+number_of_edges_df <- road_networks_l %>% 
+  lapply(ecount) %>%
+  utils::stack() %>%
+  dplyr::select(ind, values) %>%
+  setNames(c("geographical unit","number of edges"))
+
+# global clustering coefficient (transitivity)
+clustering_coefficient_global_df <- road_networks_l %>% 
+  lapply(transitivity) %>%
+  utils::stack() %>%
+  dplyr::select(ind, values) %>%
+  setNames(c("geographical unit","global clustering coefficient"))
+
+# average clustering coefficient (transitivity)
+clustering_coefficient_average_df <- road_networks_l %>% 
+  lapply(transitivity, type = "average") %>%
+  utils::stack() %>%
+  dplyr::select(ind, values) %>%
+  setNames(c("geographical unit","average clustering coefficient")) 
+
+# network density
+density_df <-  road_networks_l %>% 
+  lapply(edge_density) %>%
+  utils::stack() %>%
+  dplyr::select(ind, values) %>%
+  setNames(c("geographical unit","edge density"))
+
+# gamma index (network density planar graphs)
+gamma_f <- function(g){
+  gamma <- ecount(g)/(3*(vcount(g)-2))
+  return(gamma)
+  }
+gamma_df <-  road_networks_l %>% 
+  lapply(gamma_f) %>%
+  utils::stack() %>%
+  dplyr::select(ind, values) %>%
+  setNames(c("geographical unit","gamma index")) 
+
+# number of components
+components_n_f <- function(g){
+  components <- components(g)
+  return(components$no)
+}
+components_n_df <-  road_networks_l %>% 
+  lapply(components_n_f) %>%
+  utils::stack() %>%
+  dplyr::select(ind, values) %>%
+  setNames(c("geographical unit","number of components"))
+
+# size of the largest component
+component_size_f <- function(g){
+  components <- components(g)
+  return(max(components$csize))
+}
+largest_component_size_df <-  road_networks_l %>% 
+  lapply(component_size_f) %>%
+  utils::stack() %>%
+  dplyr::select(ind, values) %>%
+  setNames(c("geographical unit","number of nodes in largest component"))
+
+# meshedness of largest connected component
+meshedness_f <- function(g){
+  # extract largest component
+  components <- components(g)
+  largest_component <- which.max(components$csize)
+  g_largest <- induced_subgraph(g, which(components$membership == largest_component))
+
+  # extract number of edges and vertices
+  n <- vcount(g_largest)
+  m <- ecount(g_largest)
+  
+  # compute meshedness
+  meshedness <- (m-n+1)/(2*n-5)
+  return(meshedness)
+}
+meshedness_df <-  road_networks_l %>% 
+  lapply(meshedness_f) %>%
+  utils::stack() %>%
+  dplyr::select(ind, values) %>%
+  setNames(c("geographical unit","meshedness coefficient"))   
+
+# merge them into a single df
+global_indices_df <- number_of_nodes_df %>%
+  left_join(number_of_edges_df) %>%
+  left_join(components_n_df) %>%
+  left_join(largest_component_size_df) %>%
+  left_join(clustering_coefficient_global_df) %>%
+  left_join(clustering_coefficient_average_df) %>% 
+  left_join(density_df) %>% 
+  left_join(gamma_df) %>%
+  left_join(meshedness_df)
+```
+
+#### Detour
+Compute the detour
+```{r compute detour}
+# compute as the crow flies distances
+distances_acf_l <- lapply(road_networks_l, st_distance)
+
+# assign length as weight
+distances_on_network_l <- lapply(road_networks_l,function(net){
+  distance_net <- distances(
+      graph = net,
+      weights = E(net)$LENGTH_GEO,
+      algorithm = "automatic"
+  )
+  distance_net <- set_units(distance_net,"m")
+  return(distance_net)
+})
+
+# compute efficiency
+detour_l <- lapply(geographical_units,function(gu){
+  detour <- distances_on_network_l[[gu]]/distances_acf_l[[gu]]
+  return(detour)
+  }) %>% setNames(geographical_units)
+
+# compute detour centrality
+detour_centrality_l <- lapply(geographical_units, function(gu){
+  detour <- detour_l[[gu]]
+  row_sums_normalised <- apply(detour, 1, 
+                             function(row) {sum(row[is.finite(row)], na.rm = TRUE)/sum(is.finite(row))})
+  return(row_sums_normalised)}) %>% setNames(geographical_units)
+  
+# median by gu
+median_detour_centrality_df <- lapply(detour_centrality_l,median) %>% 
+  unlist() %>%
+  as.data.frame() %>% 
+  setNames("median detour") %>% 
+  cbind("geographical unit" = geographical_units)
+
+# add to global indices 
+global_indices_df <- global_indices_df %>% 
+  left_join(median_detour_centrality_df)
+```
+
+#### Export data
+```{r save global properties data}
+#write.csv(global_indices_df,"results/global_indices.csv")
+```
+
+### Centrality
+We analyse the 4 fundamental centrality measures: Betweenness, Closeness, Degree, and Eigenvector centrality (BCDE).
+
+#### Degree 
+First, compute the degree sequence and degree distribution
+```{r degree centrality}
+# compute the degree and assign as vertex attribute
+road_networks_degree_l <- lapply(road_networks_l,degree)
+
+# add degree as vertex attribute
+road_networks_l <- lapply(road_networks_l, function(g) {
+  V(g)$degree <- degree(g)
+  return(g)}
+  )
+
+# compute mean degree
+mean_degree_df <- road_networks_degree_l %>% 
+  lapply(mean) %>%
+  utils::stack() %>%
+  dplyr::select(ind, values) %>%
+  setNames(c("geographical unit","mean degree"))
+
+# compute max degree
+max_degree_df <- road_networks_degree_l %>% 
+  lapply(max) %>%
+  utils::stack() %>%
+  dplyr::select(ind, values) %>%
+  setNames(c("geographical unit","max degree"))
+
+# add them as columns of the global properties
+global_indices_df <- global_indices_df %>% 
+  left_join(mean_degree_df) %>%
+  left_join(max_degree_df)
+
+# define list of dfs of degree distribution
+road_networks_degree_distribution_df_l <- lapply(road_networks_l,
+                                                 function(g) {
+                                                   return(data.frame(
+                                                     degree = 0:max(V(g)$degree),
+                                                     fraction = degree_distribution(g)))
+                                                   }
+                                                 )
+```
+
+We use ggplot to create a barplot of the degree distribution
+```{r barplot of degree distribution}
+# function to create a barplot of the degree distribution
+degree_distribution_barplot_f <- function(gu, 
+                                          print = FALSE, 
+                                          save = FALSE){
+  # define data
+  data <- road_networks_degree_distribution_df_l[[gu]]
+  
+  # define a plot title
+  plot_title <- paste0("Degree distribution, ",gu)
+  
+  # define plot
+  degree_distribution_barplot_gu <- ggplot(
+    data = data, 
+    aes(degree,fraction)) +
+    theme_minimal() +
+        theme(panel.grid.major.x = element_blank(),
+              panel.grid.minor.x = element_blank()) +
+    # add the bar plot
+    geom_bar(stat = "identity", fill = "skyblue") +
+    #add labels 
+    labs(
+      title = plot_title,
+      x = "Degree",
+      y = "Fraction of nodes") +
+    scale_x_continuous(
+      breaks = seq(min(data$degree), 
+                   max(data$degree), 
+                   by = 1))
+  
+  # define secondary outcomes
+  if (print){
+    print(degree_distribution_barplot)
+  }
+  if (save){
+    plot_name <- str_replace_all(paste0("degree distribution ",gu)," ","_")
+    if (gu %in% countries){
+      plot_path <- paste0("./figures/degree_barplots/countries/",plot_name,".pdf")
+    } else if (gu %in% provinces){
+      plot_path <- paste0("./figures/degree_barplots/provinces/",plot_name,".pdf")
+    } else {
+      plot_path <- paste0("./figures/degree_barplots/",plot_name,".pdf")
+    }
+    #ggsave(plot_path, degree_distribution_barplot_gu, width = 7, height = 5.5) #uncomment to save plot
+  }
+  
+  # return plot for future use
+  return(degree_distribution_barplot_gu)
+}
+
+# apply function (change print and/or save to TRUE)
+degree_distribution_barplot_l <- lapply(geographical_units, degree_distribution_barplot_f, print = FALSE, save = FALSE) 
+```
+
+#### Closeness
+Now, compute the closeness centrality using the length of the roads as weights. Note that since some networks are not connected, here we use the harmonic centrality.
+```{r closeness centrality}
+# compute closeness centrality 
+road_networks_closeness_l <- lapply(road_networks_l, harmonic_centrality)
+
+# add closeness as vertex attribute
+road_networks_l <- lapply(road_networks_l, function(g) {
+  V(g)$closeness <- harmonic_centrality(g)
+  return(g)}
+  )
+```
+
+#### Betweenness
+First, compute node betweennenss
+```{r node betweenness centrality}
+# compute node betweenness centrality 
+road_networks_betweenness_l <- lapply(road_networks_l, betweenness)
+
+# add betweenness as vertex attribute
+road_networks_l <- lapply(road_networks_l, function(g) {
+  V(g)$betweenness <- betweenness(g)
+  return(g)}
+  )
+```
+
+Then, compute edge betweenness
+```{r edge betweenness centrality}
+# compute edge betweenness centrality 
+road_networks_edge_betweenness_l <- lapply(road_networks_l, edge_betweenness)
+
+# add betweenness as an edge attribute
+road_networks_l <- lapply(road_networks_l, function(g) {
+  E(g)$edge_betweenness <- edge_betweenness(g)
+  return(g)}
+  )
+```
+
+#### Eigenvector
+Compute eigenvector centrality for each component
+```{r eigenvector centrality for each component}
+eigenvector_by_component_f <- function(g){
+  # extract components
+  components <- components(g)
+  
+  # initialise eigenvector centrality df
+  eigenvector_df <- data.frame(
+    component = rep(NA,vcount(g)),
+    eigenvector = rep(NA,vcount(g))
+    )
+  
+  # for each component, compute eigenvector centrality and fill the eigenvector centrality df
+  for (n in seq(components$no)) {
+    # identify node ids in the component
+    node_indices <- which(components$membership == n)
+    eigenvector_df[node_indices,"component"] <- n 
+    
+    # compute eigenvector centrality
+    component_n <- induced_subgraph(g, node_indices)
+    eigenvector_n <- eigen_centrality(component_n)$vector
+    eigenvector_df[node_indices,"eigenvector"] <- eigenvector_n 
+  }
+  
+  # return the df
+  return(eigenvector_df)
+}
+
+# compute eigenvector centrality 
+road_networks_eigenvector_l <- lapply(road_networks_l, eigenvector_by_component_f)
+
+# add component and eigenvector as vertex attributes
+road_networks_l <- lapply(road_networks_l,  function(g) {
+  eigenvector_by_component_g <- eigenvector_by_component_f(g)
+  V(g)$component   <- eigenvector_by_component_g$component 
+  V(g)$eigenvector <- eigenvector_by_component_g$eigenvector 
+  return(g)}
+  )
+```
+
+## Visuals
+Plot Empire network with components
+```{r Empire network components}
+# Empire data 
+roads_Empire <- road_networks_l[["Empire"]]
+roads_Empire_el <- as_edgelist(roads_Empire)
+roads_Empire_edge_attr <- get.data.frame(roads_Empire, what = "edges")
+
+# initialise dataframe for components
+components_plot_data <- roads_Empire_edge_attr
+components_plot_data$comp <- components(roads_Empire)$membership[roads_Empire_el[,1]]
+
+# define a random color palette
+color_palette_Empire <- colors(1)[10*(1:13)]
+components_plot_data$color <- color_palette_Empire[components_plot_data$comp]
+
+# bounding box
+roads_coordinates <- st_coordinates(roads_Empire_edge_attr$geometry)
+min_lon <- min(roads_coordinates[,1])
+max_lon <- max(roads_coordinates[,1])
+min_lat <- min(roads_coordinates[,2])
+max_lat <- max(roads_coordinates[,2])
+
+# initialise plot
+components_plot <- ggplot() +
+    theme_minimal() + 
+    geom_sf(data = world_sf) +
+    geom_sf(data = components_plot_data,
+            aes(geometry = geometry, color = color),
+            show.legend = FALSE) +
+  
+  # define observation window
+  coord_sf(xlim = c(min_lon+1.25, max_lon-1.25),
+         ylim = c(min_lat+1.25, max_lat-1.25)) +
+
+  # add the annotation scale (if needed)
+  annotation_north_arrow(
+    location = "bl", 
+    which_north = "true",
+    pad_x = unit(0.3, "in"), pad_y = unit(0.3, "in"),
+    style = ggspatial::north_arrow_nautical(
+      fill = c("grey40", "white"),
+      line_col = "grey20",
+    )
+  ) +
+  
+  # define axis labels and title (if any)
+    labs(x = NULL, 
+         y = NULL,
+         title = NULL)
+  
+  # print the plot
+  print(components_plot)
+  
+#uncomment to save plot
+#ggsave("figures/components_plot.pdf", components_plot, width = 7, height = 5.5)
+#ggsave("figures/components_plot.jpeg", components_plot, width = 7, height = 5.5, dpi = 300)
+```
+
+Edge betweenness centrality
+```{r betweenness centrality by province}
+# province data
+for (province in provinces){
+  
+  # extract province road network
+  roads_province <- road_networks_l[[province]]
+  roads_province_el <- as_edgelist(roads_province)
+  roads_province_edge_attr <- get.data.frame(roads_province, what = "edges")
+  
+  # bounding box
+  roads_coordinates <- st_coordinates(roads_province_edge_attr$geometry)
+  min_lon <- min(roads_coordinates[,1])
+  max_lon <- max(roads_coordinates[,1])
+  min_lat <- min(roads_coordinates[,2])
+  max_lat <- max(roads_coordinates[,2])
+  
+  # initialise plot
+  edge_betweenness_plot <- ggplot() +
+      theme_minimal() + 
+      geom_sf(data = provinces_sf) +
+      geom_sf(data = roads_province_edge_attr,
+              aes(geometry = geometry, 
+                  #color = edge_betweenness/max(edge_betweenness),
+                  linewidth = edge_betweenness/max(edge_betweenness)
+                  )) + 
+    
+    # define observation window
+    coord_sf(xlim = c(min_lon-0.5, max_lon+0.5), 
+             ylim = c(min_lat-0.5, max_lat+0.5)) +
+      
+    # add the cardinal directions
+      annotation_north_arrow(
+        location = "bl", 
+        which_north = "true",
+        pad_x = unit(0.4, "in"), pad_y = unit(0.4, "in"),
+        style = ggspatial::north_arrow_nautical(
+          fill = c("grey40", "white"),
+          line_col = "grey20",
+        )
+      ) +
+    # define axis labels and legend title (if any)
+      labs(x = NULL, 
+           y = NULL,
+           #color = "Edge betweenness",
+           linewidth = "Betweenness",
+           title = NULL)
+  
+    #save plot
+    ggsave(
+      paste0("figures/edge_betweenenss_",province,"_plot.pdf"), 
+      edge_betweenness_plot, 
+      width = 7, 
+      height = 7)
+    ggsave(
+      paste0("figures/edge_betweenenss_",province,"_plot.jpeg"), 
+      edge_betweenness_plot, 
+      width = 7, 
+      height = 7, 
+      dpi = 300)
+
+  print(province)
+}
+```
+
+Edge betweenness centrality of Italia and whole Empire
+```{r  betweenness centrality Italia and Empire}
+for (gu in c("Empire","Italia")){
+  
+  # extract province road network
+  roads_gu <- road_networks_l[[gu]]
+  roads_gu_el <- as_edgelist(roads_gu)
+  roads_gu_edge_attr <- get.data.frame(roads_gu, what = "edges")
+  
+  # bounding box
+  roads_coordinates <- st_coordinates(roads_gu_edge_attr$geometry)
+  min_lon <- min(roads_coordinates[,1])
+  max_lon <- max(roads_coordinates[,1])
+  min_lat <- min(roads_coordinates[,2])
+  max_lat <- max(roads_coordinates[,2])
+  
+  # initialise plot
+  edge_betweenness_plot <- ggplot() +
+      theme_minimal() + 
+      geom_sf(data = provinces_sf) +
+      geom_sf(data = roads_gu_edge_attr,
+              aes(geometry = geometry, 
+                  #color = edge_betweenness/max(edge_betweenness),
+                  linewidth = edge_betweenness/max(edge_betweenness)
+                  )) + 
+    
+    # define observation window
+    coord_sf(xlim = c(min_lon-0.5, max_lon+0.5), 
+             ylim = c(min_lat-0.5, max_lat+0.5)) +
+      
+    # add the cardinal directions
+      annotation_north_arrow(
+        location = "bl", 
+        which_north = "true",
+        pad_x = unit(0.4, "in"), pad_y = unit(0.4, "in"),
+        style = ggspatial::north_arrow_nautical(
+          fill = c("grey40", "white"),
+          line_col = "grey20",
+        )
+      ) +
+    # define axis labels and legend title (if any)
+      labs(x = NULL, 
+           y = NULL,
+           #color = "Edge betweenness",
+           linewidth = "Betweenness",
+           title = NULL)
+  
+    #save plot
+    ggsave(
+      paste0("figures/edge_betweenenss_",gu,"_plot.pdf"), 
+      edge_betweenness_plot, 
+      width = 14, 
+      height = 14)
+    ggsave(
+      paste0("figures/edge_betweenenss_",gu,"_plot.jpeg"), 
+      edge_betweenness_plot, 
+      width = 14, 
+      height = 14, 
+      dpi = 300)
+
+  print(gu)
+}
+```
+
+Plot degree centrality
+```{r example degree centrality by province}
+# province data
+roads_province <- road_networks_l[["Britannia"]]
+roads_province_el <- as_edgelist(roads_province)
+roads_province_edge_attr <- get.data.frame(roads_province, what = "edges")
+roads_province_vertex_attr <- get.data.frame(roads_province, what = "vertices") %>%
+  arrange(degree)
+
+# bounding box
+roads_coordinates <- st_coordinates(roads_province_edge_attr$geometry)
+min_lon <- min(roads_coordinates[,1])
+max_lon <- max(roads_coordinates[,1])
+min_lat <- min(roads_coordinates[,2])
+max_lat <- max(roads_coordinates[,2])
+
+# initialise plot
+degree_plot <- ggplot() +
+    theme_minimal() + 
+    geom_sf(data = world_sf) +
+    geom_sf(data = roads_province_edge_attr,
+            aes(geometry = geometry)) + 
+    geom_sf(data = roads_province_vertex_attr,
+            aes(geometry = geometry,
+                size = degree,
+                color = degree)) +
+  
+  # define observation window
+  coord_sf(xlim = c(min_lon-1, max_lon+0.5), 
+           ylim = c(min_lat-0.5, max_lat)) +
+    
+  # add the cardinal directions
+    annotation_north_arrow(
+      location = "bl", 
+      which_north = "true",
+      pad_x = unit(0.4, "in"), pad_y = unit(0.4, "in"),
+      style = ggspatial::north_arrow_nautical(
+        fill = c("grey40", "white"),
+        line_col = "grey20",
+      )
+    ) +
+  
+  # Add the color gradient and ensure unified legend
+    scale_color_gradient(low = "blue", high = "red", name = "Degree") +
+    scale_size_continuous(name = "Degree", guide = "legend") +
+  
+  # define axis labels and legend title (if any)
+    labs(x = NULL, 
+         y = NULL,
+         title = NULL) + 
+  
+  # Adjust guides to combine size and color into one
+    guides(
+      color = guide_legend(override.aes = list(size = 1:max(roads_province_vertex_attr$degree))),
+      size = guide_legend(override.aes = list(scale_color_gradient(low = "blue", high = "red")))
+    )
+
+#save plot
+#ggsave("figures/degree_Britannia_plot.pdf", degree_plot, width = 7, height = 7)
+#ggsave("figures/degree_Britannia_plot.jpeg", degree_plot, width = 7, height = 7, dpi = 300)
+```
+
+## Geometric models
+We compare the road network with a planar network built from the Pleiades dataset.
+First, we project the coordinates to a planar reference system.
+```{r convert coordinates to planar projections}
+# extract coordinates
+Pleiades_lonlat_df <- Pleiades_sf %>%
+  st_coordinates() %>%
+  as.data.frame() %>%
+  setNames(c("lon","lat")) %>%
+  na.omit() %>%
+  unique()
+
+# Pleiades data
+Pleiades_3395_sf <-  st_transform(Pleiades_sf,
+                                  crs=crs("epsg:3395"))
+# extract projected coordinates
+Pleiades_3395_xy_df <- Pleiades_3395_sf %>%
+  st_coordinates() %>%
+  as.data.frame() %>%
+  setNames(c("x","y")) %>%
+  na.omit() %>%
+  unique()
+
+# world 
+world_3395_sf <- st_transform(world_sf,
+                              crs=crs("epsg:3395"))
+
+# Extract the geometric information
+world_3395_geometry <- st_geometry(world_3395_sf)
+
+# Define a spatstat owin
+world_owin <- as.owin(world_3395_geometry)
+
+# define point pattern
+Pleiades_ppp <- ppp(Pleiades_3395_xy_df$x,
+                    Pleiades_3395_xy_df$y,
+                    window = world_owin)
+```
+
+### Gabriel
+Define a Gabriel graph from the spatial point process
+```{r Gabriel graph models}
+# define Gabriel graph model
+gg2 <- spatgraph(Pleiades_ppp, type="gabriel")
+
+# extract the (projected) coordinates of the point pattern (note: s
+Pleiades_lonlat3395_selected_df <- data.frame(lon=Pleiades_ppp$x,
+                                              lat=Pleiades_ppp$y) 
+# assign an id to each node
+Pleiades_lonlat3395_selected_df$id <- 1:nrow(Pleiades_lonlat3395_selected_df)
+
+# convert to a coordinate system suitable for mapping
+Pleiades_lonlat_selected_sf <- st_as_sf(Pleiades_lonlat3395_selected_df, 
+                             coords = c("lon","lat"), 
+                             crs = crs("epsg:3395")) %>%
+  st_transform(crs=crs("epsg:4326"))
+
+# express as df
+Pleiades_lonlat_selected_df <- data.frame(st_coordinates(Pleiades_lonlat_selected_sf)) %>%
+  setNames(c("lon","lat"))
+Pleiades_lonlat_selected_df$id <- Pleiades_lonlat_selected_sf$id
+```
+
+We convert the data to a data.frame more suitable for visualisation.
+```{r Gabriel graph as convert to data frame}
+# define a graph from ad adjacency list
+Pleiades_Gabriel <- graph_from_adj_list(gg2$edges,
+                                        mode="all", 
+                                        duplicate =TRUE) 
+
+# convert into a dataframe
+Pleiades_Gabriel_df <- as_data_frame(Pleiades_Gabriel) %>% setNames(c("v_1","v_2"))
+
+# add info on longitude and longitude
+Pleiades_Gabriel_df <- Pleiades_Gabriel_df %>%
+  left_join(Pleiades_lonlat_selected_df,join_by("v_1"=="id")) %>%
+  left_join(Pleiades_lonlat_selected_df,join_by("v_2"=="id")) %>%
+  left_join(Pleiades_lonlat3395_selected_df,join_by("v_1"=="id")) %>%
+  left_join(Pleiades_lonlat3395_selected_df,join_by("v_2"=="id")) %>%
+  setNames(c("v_1","v_2",
+             "lon_1","lat_1","lon_2","lat_2",
+             "lon3359_1","lat3359_1","lon3359_2","lat3359_2"))
+```
+
+Create a quick plot of a Gabriel graph
+```{r Plot Gabriel graph}
+# set plot limits
+min_lon <- min(Pleiades_lonlat_selected_df$lon)
+max_lon <- max(Pleiades_lonlat_selected_df$lon)
+min_lat <- min(Pleiades_lonlat_selected_df$lat)
+max_lat <- max(Pleiades_lonlat_selected_df$lat)
+
+# initialise plot
+Gabriel_plot <- ggplot() +
+    theme_minimal() + 
+    geom_sf(data = world_sf) +
+  
+  # define observation window
+  coord_sf(xlim = c(min_lon+1.25, max_lon-1.25),
+         ylim = c(min_lat+1.25, max_lat-1.25)) +
+  
+  # add edges
+  geom_segment(data = Pleiades_Gabriel_df, 
+               aes(x = lon_1, y = lat_1, xend = lon_2, yend = lat_2),
+               color = "red",
+               linewidth = 0.2) +
+
+  # add the annotation scale (if needed)
+  annotation_north_arrow(
+    location = "bl", 
+    which_north = "true",
+    pad_x = unit(0.4, "in"), pad_y = unit(0.4, "in"),
+    style = ggspatial::north_arrow_nautical(
+      fill = c("grey40", "white"),
+      line_col = "grey20",
+    )
+  ) +
+  
+  # define axis labels and title (if any)
+    labs(x = NULL, 
+         y = NULL,
+         title = NULL)
+  
+  # print the plot
+  print(Gabriel_plot)
+```
+
+The network includes connections that pass through the sea, which we want to delete. We check which edges are valid by creating a number of points along each edge and checking if all these points fall inside the observation window. (Intuitively, if one or more of the points along an edge are on the sea, then the edge is not valid.)
+```{r check valid edges}
+# save number of edges
+Pleiades_Gabriel_n_edges <- nrow(Pleiades_Gabriel_df)
+
+# specify a number of points to include along the edge (including the endpoints)
+np <- 11
+
+# create a matrix that will include the points (in long format), specifying the endpoints of the segment they belong to and their coordinates 
+Pleiades_Gabriel_points_on_edges_long <- matrix(
+  nrow = np*Pleiades_Gabriel_n_edges, 
+  ncol = 4)
+
+# extract the projected coordinates of the endpoints of the edges and save them as a dataframe
+Pleiades_Gabriel_3359<- as.matrix(Pleiades_Gabriel_df[,c("v_1","v_2","lon3359_1","lat3359_1","lon3359_2","lat3359_2")])
+
+# for each edge, create 10 points and add them to the matrix
+for (i in 1:Pleiades_Gabriel_n_edges) {
+  for (j in 0:(np-1)) {
+    Pleiades_Gabriel_points_on_edges_long[(i-1)*np+j+1,1:2] <- Pleiades_Gabriel_3359[i,1:2]
+    Pleiades_Gabriel_points_on_edges_long[(i-1)*np+j+1,3:4]<-
+      (np-1-j)/(np-1)*Pleiades_Gabriel_3359[i,3:4] + 
+      j/(np-1)*Pleiades_Gabriel_3359[i,5:6]
+  }
+  if (i%%1000==0) {print(i)}
+}
+
+# transform the result into a dataframe, for legibility
+Pleiades_Gabriel_points_on_edges_long_df <- data.frame(Pleiades_Gabriel_points_on_edges_long) %>% setNames(c("v_1","v_2","lon3359","lat3359"))
+
+# for each point, check if it falls into the above defined observation windows
+Pleiades_Gabriel_points_on_edges_long_df$keep <- inside.owin(
+  x= Pleiades_Gabriel_points_on_edges_long_df$lon3359,
+  y=Pleiades_Gabriel_points_on_edges_long_df$lat3359,
+  w=world_owin)
+
+# specify that an edge should be kept if all points along it fall on land
+Pleiades_Gabriel_df$keep <- FALSE
+for (i in 1:Pleiades_Gabriel_n_edges){
+  Pleiades_Gabriel_df$keep[i]<-all(Pleiades_Gabriel_points_on_edges_long_df$keep[((i-1)*np)+1:np])
+}
+```
+
+The following figure indicates the valid connections.
+```{r plot valid connections}
+# initialise plot
+Gabriel_plot <- ggplot() +
+    theme_minimal() + 
+    geom_sf(data = world_sf) +
+  
+  # define observation window
+  coord_sf(xlim = c(min_lon+1.25, max_lon-1.25),
+         ylim = c(min_lat+1.25, max_lat-1.25)) +
+  
+  # add edges
+  geom_segment(data = Pleiades_Gabriel_df[which(Pleiades_Gabriel_df$keep),], 
+               aes(x = lon_1, y = lat_1, xend = lon_2, yend = lat_2),
+               color = "red",
+               size = 0.2) +
+  
+  # uncomment to visualise in blue the deleted edges
+  #geom_segment(data = Pleiades_Gabriel_df[which(!Pleiades_Gabriel_df$keep),], 
+               #aes(x = lon_1, y = lat_1, xend = lon_2, yend = lat_2),
+               #color = "blue",
+               #size = 0.2) +
+
+  # add the annotation scale (if needed)
+  annotation_north_arrow(
+    location = "bl", 
+    which_north = "true",
+    pad_x = unit(0.4, "in"), pad_y = unit(0.4, "in"),
+    style = ggspatial::north_arrow_nautical(
+      fill = c("grey40", "white"),
+      line_col = "grey20",
+    )
+  ) +
+  
+  # define axis labels and title (if any)
+    labs(x = NULL, 
+         y = NULL,
+         title = NULL)
+  
+  # print the plot
+  print(Gabriel_plot)
+  
+
+#save plot
+#ggsave("figures/Gabriel_network.pdf", Gabriel_plot, width = 7, height = 5.5)
+#ggsave("figures/Gabriel_network.jpeg", Gabriel_plot, width = 7, height = 5.5, dpi = 300)
+```
+
+We conclude by updating the definition of the graph (this may be useful for future analyses).
+```{r final definition of Gabriel graph}
+# define a graph from ad adjacency list
+Pleiades_Gabriel_clean <- graph_from_data_frame(Pleiades_Gabriel_df[Pleiades_Gabriel_df$keep==TRUE,],directed = FALSE)
+```
+
+### Relative Neighbourhood graph
+We repeat the above analysis for the relative neighbourhood graph.
+```{r define the relative neighbourhood graph}
+# find the graph edges
+rng2 <- spatgraph(Pleiades_ppp, type="RNG")
+```
+
+We convert the data to a data.frame more suitable for visualisation.
+```{r convert relative neighbourhood graph into a dataframe}
+# define a graph from an adjacency list
+Pleiades_RNG <- graph_from_adj_list(rng2$edges,
+                                        mode="all", 
+                                        duplicate =TRUE) 
+
+# convert into a dataframe
+Pleiades_RNG_df <- as_data_frame(Pleiades_RNG) %>% setNames(c("v_1","v_2"))
+
+# add info on longitude and longitude
+Pleiades_RNG_df <- Pleiades_RNG_df %>%
+  left_join(Pleiades_lonlat_selected_df,join_by("v_1"=="id")) %>%
+  left_join(Pleiades_lonlat_selected_df,join_by("v_2"=="id")) %>%
+  left_join(Pleiades_lonlat3395_selected_df,join_by("v_1"=="id")) %>%
+  left_join(Pleiades_lonlat3395_selected_df,join_by("v_2"=="id")) %>%
+  setNames(c("v_1","v_2",
+             "lon_1","lat_1","lon_2","lat_2",
+             "lon3359_1","lat3359_1","lon3359_2","lat3359_2"))
+```
+
+We plot the resulting network.
+```{r plot of the naive relative neighbourhood graph}
+# initialise plot
+RNG_plot <- ggplot() +
+    theme_minimal() + 
+    geom_sf(data = world_sf) +
+  
+  # define observation window
+  coord_sf(xlim = c(min_lon+1.25, max_lon-1.25),
+         ylim = c(min_lat+1.25, max_lat-1.25)) +
+  
+  # add edges
+  geom_segment(data = Pleiades_RNG_df, 
+               aes(x = lon_1, y = lat_1, xend = lon_2, yend = lat_2),
+               color = "red",
+               size = 0.2) +
+
+  # add the annotation scale (if needed)
+  annotation_north_arrow(
+    location = "bl", 
+    which_north = "true",
+    pad_x = unit(0.4, "in"), pad_y = unit(0.4, "in"),
+    style = ggspatial::north_arrow_nautical(
+      fill = c("grey40", "white"),
+      line_col = "grey20",
+    )
+  ) +
+  
+  # define axis labels and title (if any)
+    labs(x = NULL, 
+         y = NULL,
+         title = NULL)
+  
+  # print the plot
+  print(RNG_plot)
+```
+
+The network includes connections that pass through the sea, which we want to delete. We check which edges are valid by creating a number of points along each edge and checking if all these points fall inside the observation window. (Intuitively, if one or more of the points along an edge are on the sea, then the edge is not valid.)
+```{r exclude edges on the sea}
+# save number of edges
+Pleiades_RNG_n_edges <- nrow(Pleiades_RNG_df)
+
+# specify a number of points to include along the edge (including the endpoints)
+np <- 11
+
+# create a matrix that will include the points (in long format), specifying the endpoints of the segment they belong to and their coordinates 
+Pleiades_RNG_points_on_edges_long <- matrix(
+  nrow = np*Pleiades_RNG_n_edges, 
+  ncol = 4)
+
+# extract the projected coordinates of the endpoints of the edges and save them as a dataframe
+Pleiades_RNG_3359<- as.matrix(Pleiades_RNG_df[,c("v_1","v_2","lon3359_1","lat3359_1","lon3359_2","lat3359_2")])
+
+# for each edge, create 10 points and add them to the matrix
+for (i in 1:Pleiades_RNG_n_edges) {
+  for (j in 0:(np-1)) {
+    Pleiades_RNG_points_on_edges_long[(i-1)*np+j+1,1:2] <- Pleiades_RNG_3359[i,1:2]
+    Pleiades_RNG_points_on_edges_long[(i-1)*np+j+1,3:4]<-
+      (np-1-j)/(np-1)*Pleiades_RNG_3359[i,3:4] + 
+      j/(np-1)*Pleiades_RNG_3359[i,5:6]
+  }
+  if (i%%1000==0) {print(i)}
+}
+
+# transform the result into a dataframe, for legibility
+Pleiades_RNG_points_on_edges_long_df <- data.frame(Pleiades_RNG_points_on_edges_long) %>% setNames(c("v_1","v_2","lon3359","lat3359"))
+
+# for each point, check if it falls into the above defined observation windows
+Pleiades_RNG_points_on_edges_long_df$keep <- inside.owin(
+  x= Pleiades_RNG_points_on_edges_long_df$lon3359,
+  y=Pleiades_RNG_points_on_edges_long_df$lat3359,
+  w=world_owin)
+
+# specify that an edge should be kept if all points along it fall on land
+Pleiades_RNG_df$keep <- FALSE
+for (i in 1:Pleiades_RNG_n_edges){
+  Pleiades_RNG_df$keep[i]<-all(Pleiades_RNG_points_on_edges_long_df$keep[((i-1)*np)+1:np])
+}
+```
+
+The following figure indicates the valid connections.
+```{r plot valid connections}
+# initialise plot
+RNG_plot <- ggplot() +
+    theme_minimal() + 
+    geom_sf(data = world_sf) +
+  
+  # define observation window
+  coord_sf(xlim = c(min_lon+1.25, max_lon-1.25),
+         ylim = c(min_lat+1.25, max_lat-1.25)) +
+  
+  # add edges
+  geom_segment(data = Pleiades_RNG_df[which(Pleiades_RNG_df$keep),], 
+               aes(x = lon_1, y = lat_1, xend = lon_2, yend = lat_2),
+               color = "red",
+               size = 0.2) +
+  
+ # add Pleiades
+ # geom_point(data = Pleiades_lonlat_df, 
+ #            aes(x = lon, y = lat),
+ #            color = "blue",
+ #            size = 0.4) +
+  
+  
+  # uncomment to visualise in blue the deleted edges
+  #geom_segment(data = Pleiades_RNG_df[which(!Pleiades_RNG_df$keep),], 
+               #aes(x = lon_1, y = lat_1, xend = lon_2, yend = lat_2),
+               #color = "blue",
+               #size = 0.2) +
+
+  # add the annotation scale (if needed)
+  annotation_north_arrow(
+    location = "bl", 
+    which_north = "true",
+    pad_x = unit(0.4, "in"), pad_y = unit(0.4, "in"),
+    style = ggspatial::north_arrow_nautical(
+      fill = c("grey40", "white"),
+      line_col = "grey20",
+    )
+  ) +
+  
+  # define axis labels and title (if any)
+    labs(x = NULL, 
+         y = NULL,
+         title = NULL)
+  
+  # print the plot
+  print(RNG_plot)
+  
+
+#save plot
+#ggsave("figures/RNG_network.pdf", RNG_plot, width = 7, height = 5.5)
+#ggsave("figures/RNG_network.jpeg", RNG_plot, width = 7, height = 5.5, dpi = 300)
+```
+
+We conclude by updating the definition of the graph (this may be useful for future analyses).
+```{r update relative neighbourhood graph}
+# define a graph from ad adjacency list
+Pleiades_RNG_clean <- graph_from_data_frame(Pleiades_RNG_df[Pleiades_RNG_df$keep==TRUE,],directed = FALSE)
+```
+
+### Delaunay triangulation
+For the Delaunay triangulation, we will have to use a different package. 
+We begin by defining the graph.
+```{r define Delaunay triangulation}
+# Delaunay triangulation
+dt1 <- deldir(Pleiades_ppp)
+```
+
+Then we extract the relevant dataframe of locations
+```{r transform Delaunay triangulation into dataframe}
+# projected locations
+Pleiades_DT_df <- dt1$delsgs %>%
+  dplyr::select(ind1,ind2,x1,y1,x2,y2) %>%
+  setNames(c("v_1","v_2","lon3359_1","lat3359_1","lon3359_2","lat3359_2")) %>%
+  left_join(Pleiades_lonlat_selected_df,join_by("v_1"=="id")) %>%
+  left_join(Pleiades_lonlat_selected_df,join_by("v_2"=="id")) %>%
+  rename(lon_1 = lon.x, lat_1 = lat.x, lon_2 = lon.y, lat_2 = lat.y)
+```
+
+We plot the resulting network.
+```{r plot of the naive relative neighbourhood graph}
+# initialise plot
+DT_plot <- ggplot() +
+    theme_minimal() + 
+    geom_sf(data = world_sf) +
+  
+  # define observation window
+  coord_sf(xlim = c(min_lon+1.25, max_lon-1.25),
+         ylim = c(min_lat+1.25, max_lat-1.25)) +
+  
+  # add edges
+  geom_segment(data = Pleiades_DT_df, 
+               aes(x = lon_1, y = lat_1, xend = lon_2, yend = lat_2),
+               color = "red",
+               size = 0.2) +
+
+  # add the annotation scale (if needed)
+  annotation_north_arrow(
+    location = "bl", 
+    which_north = "true",
+    pad_x = unit(0.4, "in"), pad_y = unit(0.4, "in"),
+    style = ggspatial::north_arrow_nautical(
+      fill = c("grey40", "white"),
+      line_col = "grey20",
+    )
+  ) +
+  
+  # define axis labels and title (if any)
+    labs(x = NULL, 
+         y = NULL,
+         title = NULL)
+  
+  # print the plot
+  print(DT_plot)
+```
+
+The network includes connections that pass through the sea, which we want to delete. We check which edges are valid by creating a number of points along each edge and checking if all these points fall inside the observation window. (Intuitively, if one or more of the points along an edge are on the sea, then the edge is not valid.)
+```{r exclude edges on the sea}
+# save number of edges
+Pleiades_DT_n_edges <- nrow(Pleiades_DT_df)
+
+# specify a number of points to include along the edge (including the endpoints)
+np <- 11
+
+# create a matrix that will include the points (in long format), specifying the endpoints of the segment they belong to and their coordinates 
+Pleiades_DT_points_on_edges_long <- matrix(
+  nrow = np*Pleiades_DT_n_edges, 
+  ncol = 4)
+
+# extract the projected coordinates of the endpoints of the edges and save them as a dataframe
+Pleiades_DT_3359<- as.matrix(Pleiades_DT_df[,c("v_1","v_2","lon3359_1","lat3359_1","lon3359_2","lat3359_2")])
+
+# for each edge, create 10 points and add them to the matrix
+for (i in 1:Pleiades_DT_n_edges) {
+  for (j in 0:(np-1)) {
+    Pleiades_DT_points_on_edges_long[(i-1)*np+j+1,1:2] <- Pleiades_DT_3359[i,1:2]
+    Pleiades_DT_points_on_edges_long[(i-1)*np+j+1,3:4]<-
+      (np-1-j)/(np-1)*Pleiades_DT_3359[i,3:4] + 
+      j/(np-1)*Pleiades_DT_3359[i,5:6]
+  }
+  if (i%%1000==0) {print(i)}
+}
+
+# transform the result into a dataframe, for legibility
+Pleiades_DT_points_on_edges_long_df <- data.frame(Pleiades_DT_points_on_edges_long) %>%
+  setNames(c("v_1","v_2","lon3359","lat3359"))
+
+# for each point, check if it falls into the above defined observation windows
+Pleiades_DT_points_on_edges_long_df$keep <- inside.owin(
+  x = Pleiades_DT_points_on_edges_long_df$lon3359,
+  y = Pleiades_DT_points_on_edges_long_df$lat3359,
+  w = world_owin)
+
+# specify that an edge should be kept if all points along it fall on land
+Pleiades_DT_df$keep <- FALSE
+for (i in 1:Pleiades_DT_n_edges){
+  Pleiades_DT_df$keep[i]<-all(Pleiades_DT_points_on_edges_long_df$keep[((i-1)*np)+1:np])
+}
+```
+
+The following figure indicates the valid connections.
+```{r plot valid connections}
+# initialise plot
+DT_plot <- ggplot() +
+    theme_minimal() + 
+    geom_sf(data = world_sf) +
+  
+  # define observation window
+  coord_sf(xlim = c(min_lon+1.25, max_lon-1.25),
+         ylim = c(min_lat+1.25, max_lat-1.25)) +
+  
+  # add edges
+  geom_segment(data = Pleiades_DT_df[which(Pleiades_DT_df$keep),], 
+               aes(x = lon_1, y = lat_1, xend = lon_2, yend = lat_2),
+               color = "red",
+               size = 0.2) +
+  
+ # add Pleiades
+ #  geom_point(data = Pleiades_lonlat_df, 
+ #             aes(x = lon, y = lat),
+ #             color = "blue",
+ #             size = 0.4) +
+  
+  
+  # uncomment to visualise in blue the deleted edges
+  #geom_segment(data = Pleiades_DT_df[which(!Pleiades_DT_df$keep),], 
+  #             aes(x = lon_1, y = lat_1, xend = lon_2, yend = lat_2),
+  #             color = "blue",
+  #             size = 0.2) +
+
+  # add the annotation scale (if needed)
+  annotation_north_arrow(
+    location = "bl", 
+    which_north = "true",
+    pad_x = unit(0.4, "in"), pad_y = unit(0.4, "in"),
+    style = ggspatial::north_arrow_nautical(
+      fill = c("grey40", "white"),
+      line_col = "grey20",
+    )
+  ) +
+  
+  # define axis labels and title (if any)
+    labs(x = NULL, 
+         y = NULL,
+         title = NULL)
+  
+  # print the plot
+  print(DT_plot)
+  
+
+#save plot
+#ggsave("figures/DT_network.pdf", DT_plot, width = 7, height = 5.5)
+#ggsave("figures/DT_network.jpeg", DT_plot, width = 7, height = 5.5, dpi = 300)
+```
+
+We conclude by updating the definition of the graph (this may be useful for future analyses).
+```{r update Delaunay traingulation graph}
+# define a graph from an adjacency list
+Pleiades_DT_df_clean <- Pleiades_DT_df[Pleiades_DT_df$keep == TRUE,]
+Pleiades_DT_clean <- graph_from_data_frame(Pleiades_DT_df_clean,directed = FALSE)
+```
+
+### Minimum spanning forest
+We now find a minimum spanning forest
+```{r Spanning forest}
+# associate length to edges in DT
+DT_edge_length <- st_distance(
+  Pleiades_lonlat_df[Pleiades_sf$id %in% Pleiades_DT_df_clean$v_1,],
+  Pleiades_sf[Pleiades_sf$id %in% Pleiades_DT_df_clean$v_2,])
+E(Pleiades_DT_clean)$length <- 
+
+# Compute MST for each component
+DT_components <- decompose(Pleiades_DT_clean)  # Decompose into connected components
+msf <- lapply(DT_components, function(comp) mst(comp))
+
+# transform into dataframe
+msf_df <- as.data.frame(matrix(NA,nrow=0,ncol=4)) %>% 
+  set_names(c("lon_1","lat_1","lon_2","lat_2"))
+
+for (i in seq(length(msf))) {
+  comp <- msf[[i]]
+  comp_edge_coord <- comp %>%
+    edge_attr() %>%
+    as.data.frame() %>%
+    select(lon_1,lat_1,lon_2,lat_2)
+  msf_df <- rbind(msf_df,comp_edge_coord)
+}
+  
+# initialise plot
+MSF_plot <- ggplot() +
+    theme_minimal() + 
+    geom_sf(data = world_sf) +
+  
+  # define observation window
+  coord_sf(xlim = c(min_lon+1.25, max_lon-1.25),
+         ylim = c(min_lat+1.25, max_lat-1.25)) +
+  
+  # add edges
+  geom_segment(data = msf_df, 
+               aes(x = lon_1, y = lat_1, xend = lon_2, yend = lat_2),
+               color = "red",
+               size = 0.2) +
+
+  # add the annotation scale (if needed)
+  annotation_north_arrow(
+    location = "bl", 
+    which_north = "true",
+    pad_x = unit(0.4, "in"), pad_y = unit(0.4, "in"),
+    style = ggspatial::north_arrow_nautical(
+      fill = c("grey40", "white"),
+      line_col = "grey20",
+    )
+  ) +
+  
+  # define axis labels and title (if any)
+    labs(x = NULL, 
+         y = NULL,
+         title = NULL)
+  
+  # print the plot
+  print(MSF_plot)
+  
+#save plot
+#ggsave("figures/DT_network.pdf", RNG_plot, width = 7, height = 5.5)
+#ggsave("figures/DT_network.jpeg", RNG_plot, width = 7, height = 5.5, dpi = 300)
+```
+Results are clearly not realistic
+
+### Analysis
+We merge the above models (Gabriel graph, relative neighbourhood, Delaunay triangulation) into a list and analyse their global properties
+```{r analysis of geometric models}
+# list of models
+geom_models_l <- list(
+  Empire = road_networks_l[["Empire"]],
+  Gabriel = Pleiades_Gabriel_clean,
+  RNG = Pleiades_RNG_clean,
+  DT = Pleiades_DT_clean)
+
+# number of nodes
+geom_models_number_of_nodes_df <- geom_models_l %>% 
+  lapply(vcount) %>%
+  utils::stack() %>%
+  dplyr::select(ind, values) %>%
+  setNames(c("network","number of nodes"))
+
+# number of edges
+geom_models_number_of_edges_df <- geom_models_l %>% 
+  lapply(ecount) %>%
+  utils::stack() %>%
+  dplyr::select(ind, values) %>%
+  setNames(c("network","number of edges"))
+
+# global clustering coefficient (transitivity)
+geom_models_clustering_coefficient_global_df <- geom_models_l %>% 
+  lapply(transitivity) %>%
+  utils::stack() %>%
+  dplyr::select(ind, values) %>%
+  setNames(c("network","global clustering coefficient"))
+
+# average clustering coefficient (transitivity)
+geom_models_clustering_coefficient_average_df <- geom_models_l %>% 
+  lapply(transitivity, type = "average") %>%
+  utils::stack() %>%
+  dplyr::select(ind, values) %>%
+  setNames(c("network","average clustering coefficient")) 
+
+# network density
+geom_models_density_df <-  geom_models_l %>% 
+  lapply(edge_density) %>%
+  utils::stack() %>%
+  dplyr::select(ind, values) %>%
+  setNames(c("network","edge density"))
+
+# gamma index (network density planar graphs)
+geom_models_gamma_df <-  geom_models_l %>% 
+  lapply(gamma_f) %>%
+  utils::stack() %>%
+  dplyr::select(ind, values) %>%
+  setNames(c("network","gamma index")) 
+
+# number of components
+geom_models_components_n_df <-  geom_models_l %>% 
+  lapply(components_n_f) %>%
+  utils::stack() %>%
+  dplyr::select(ind, values) %>%
+  setNames(c("network","number of components"))
+
+# size of the largest component
+geom_models_largest_component_size_df <-  geom_models_l %>% 
+  lapply(component_size_f) %>%
+  utils::stack() %>%
+  dplyr::select(ind, values) %>%
+  setNames(c("network","number of nodes in largest component"))
+
+# meshedness of largest connected component
+geom_models_meshedness_df <-  geom_models_l %>% 
+  lapply(meshedness_f) %>%
+  utils::stack() %>%
+  dplyr::select(ind, values) %>%
+  setNames(c("network","meshedness coefficient"))   
+
+# merge them into a single df
+geom_models_global_indices_df <- geom_models_number_of_nodes_df %>%
+  left_join(geom_models_number_of_edges_df) %>%
+  left_join(geom_models_components_n_df) %>%
+  left_join(geom_models_largest_component_size_df) %>%
+  left_join(geom_models_clustering_coefficient_global_df) %>%
+  left_join(geom_models_clustering_coefficient_average_df) %>% 
+  left_join(geom_models_density_df) %>% 
+  left_join(geom_models_gamma_df) %>%
+  left_join(geom_models_meshedness_df)
+```
+
+## Comparison with modern roads
+Network construction
+```{r modern road network contruction}
+#define networks of the Empire and individual provinces
+modern_roads_with_provinces_Empire_net <- as_sfnetwork(
+  modern_roads_with_provinces_sf,
+  directed = FALSE)
+modern_roads_with_provinces_net_l <- lapply(
+  modern_roads_sf_provinces_l, 
+  as_sfnetwork, 
+  directed = FALSE)
+#modern_roads_with_provinces_net_l$Empire <- modern_roads_with_provinces_Empire_net
+```
+
+Compute global properties as above
+```{r modern roads global indices}
+# number of nodes
+modern_number_of_nodes_df <- modern_roads_with_provinces_net_l %>% 
+  lapply(vcount) %>%
+  utils::stack() %>%
+  dplyr::select(ind, values) %>%
+  setNames(c("geographical unit","number of nodes"))
+
+# number of edges
+modern_number_of_edges_df <- modern_roads_with_provinces_net_l %>% 
+  lapply(ecount) %>%
+  utils::stack() %>%
+  dplyr::select(ind, values) %>%
+  setNames(c("geographical unit","number of edges"))
+
+# global clustering coefficient (transitivity)
+modern_clustering_coefficient_global_df <- modern_roads_with_provinces_net_l %>% 
+  lapply(transitivity) %>%
+  utils::stack() %>%
+  dplyr::select(ind, values) %>%
+  setNames(c("geographical unit","global clustering coefficient"))
+
+# average clustering coefficient (transitivity)
+modern_clustering_coefficient_average_df <- modern_roads_with_provinces_net_l %>% 
+  lapply(transitivity, type = "average") %>%
+  utils::stack() %>%
+  dplyr::select(ind, values) %>%
+  setNames(c("geographical unit","average clustering coefficient")) 
+
+# network density
+modern_density_df <-  modern_roads_with_provinces_net_l %>% 
+  lapply(edge_density) %>%
+  utils::stack() %>%
+  dplyr::select(ind, values) %>%
+  setNames(c("geographical unit","edge density"))
+
+# gamma index (network density planar graphs)
+modern_gamma_df <-  modern_roads_with_provinces_net_l %>% 
+  lapply(gamma_f) %>%
+  utils::stack() %>%
+  dplyr::select(ind, values) %>%
+  setNames(c("geographical unit","gamma index")) 
+
+# number of components
+modern_components_n_df <-  modern_roads_with_provinces_net_l %>% 
+  lapply(components_n_f) %>%
+  utils::stack() %>%
+  dplyr::select(ind, values) %>%
+  setNames(c("geographical unit","number of components"))
+
+# size of the largest component
+modern_largest_component_size_df <-  modern_roads_with_provinces_net_l %>% 
+  lapply(component_size_f) %>%
+  utils::stack() %>%
+  dplyr::select(ind, values) %>%
+  setNames(c("geographical unit","number of nodes in largest component"))
+
+# meshedness of largest connected component
+modern_meshedness_df <-  modern_roads_with_provinces_net_l %>% 
+  lapply(meshedness_f) %>%
+  utils::stack() %>%
+  dplyr::select(ind, values) %>%
+  setNames(c("geographical unit","meshedness coefficient"))   
+
+# merge them into a single df
+modern_global_indices_df <- modern_number_of_nodes_df %>%
+  left_join(modern_number_of_edges_df) %>%
+  left_join(modern_components_n_df) %>%
+  left_join(modern_largest_component_size_df) %>%
+  left_join(modern_clustering_coefficient_global_df) %>%
+  left_join(modern_clustering_coefficient_average_df) %>% 
+  left_join(modern_density_df) %>% 
+  left_join(modern_gamma_df) %>%
+  left_join(modern_meshedness_df)
+
+# save results
+#write.csv(modern_global_indices_df,"results/modern_global_indices.csv")
+```
+
+Add detour
+```{r add detour}
+# compute as the crow flies distances
+modern_distances_acf_l <- list()
+for (gu in names(modern_roads_with_provinces_net_l)) {
+  modern_distances_acf_l[[gu]] <- st_distance(modern_roads_with_provinces_net_l[[gu]])
+  print(gu)
+}
+
+# assign length as weight
+modern_distances_on_network_l <- lapply(modern_roads_with_provinces_net_l,function(net){
+  distance_net <- distances(
+      graph = net,
+      weights = E(net)$Shape_Length,
+      algorithm = "automatic"
+  )
+  distance_net <- set_units(distance_net,"m")
+  return(distance_net)
+})
+
+# compute efficiency
+modern_detour_l <- lapply(
+  names(modern_roads_with_provinces_net_l),
+  function(gu){
+    detour <- modern_distances_on_network_l[[gu]]/modern_distances_acf_l[[gu]]
+    return(detour)
+    }
+  ) %>% 
+  setNames(names(modern_roads_with_provinces_net_l))
+
+# compute detour centrality
+modern_detour_centrality_l <- lapply(
+  provinces,
+  function(gu){
+    detour <- modern_detour_l[[gu]]
+    row_sums_normalised <- apply(
+      detour, 
+      1,
+      function(row) {
+        sum(row[is.finite(row)], na.rm = TRUE)/sum(is.finite(row))})
+    return(row_sums_normalised)}) %>% 
+  setNames(names(modern_roads_with_provinces_net_l))
+  
+# median by gu
+modern_median_detour_centrality_df <- lapply(modern_detour_centrality_l,median) %>% 
+  unlist() %>%
+  as.data.frame() %>% 
+  setNames("median detour") %>% 
+  cbind("geographical unit" = c(provinces))
+
+# add to global indices 
+modern_global_indices_df <- modern_global_indices_df %>% 
+  left_join(modern_median_detour_centrality_df)
+```
+
+## Main vs Secondary roads
+### Computation and boxplot
+We compute the betwenness centrality distinguishing between main and secondary roads
+```{r prepare betwenness data}
+# define list of betweenness and road type
+edge_betweenness_road_type_l <- lapply(road_networks_l, function(net){
+  net %>%
+    edge_attr() %>%
+    as.data.frame() %>%
+    group_by(Type) %>%       # Group data by 'group' column
+    reframe(edge_betweenness = edge_betweenness/max(edge_betweenness))}
+  ) 
+
+# transform into a data frame
+edge_betweenness_road_type_df <- edge_betweenness_road_type_l %>%
+  imap_dfr(~ .x %>% mutate("region" = .y))
+
+# rearrange by median
+edge_betweenness_road_type_df <- edge_betweenness_road_type_df %>%
+  group_by(region, Type) %>%
+  summarise(median_value = median(edge_betweenness), .groups = "drop") %>%
+  arrange(median_value) %>%
+  mutate(region = factor(region, levels = unique(region))) %>%
+  dplyr::select(region, median_value) %>%
+  left_join(edge_betweenness_road_type_df, by = "region")
+
+# select provinces and Italia only
+edge_betweenness_road_type_provinces_df <- edge_betweenness_road_type_df[edge_betweenness_road_type_df$region %in% c(provinces,"Italia"),]
+```
+
+Create boxplot
+```{r boxplot edge betweenness by province and road type}
+# Boxplot
+boxplot_betweenness_by_province_and_road_type <- ggplot(
+    edge_betweenness_road_type_provinces_df,
+    aes(
+      x = reorder(region, median_value), 
+      y = edge_betweenness, 
+      fill = Type)) +
+  geom_boxplot(outlier.shape = NA) +
+  scale_y_continuous(limits = c(0, 1)) +  # Set y-axis limits
+  labs(
+    title = "Edge betweenness by province and road type",
+    x = "Province",
+    y = "Value",
+    fill = "Type"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+#save plot
+#ggsave("figures/boxplot_edge_betweenness.pdf", boxplot_betweenness_by_province_and_road_type, width = 15, height = 5)
+#ggsave("figures/boxplot_edge_betweenness.jpeg", boxplot_betweenness_by_province_and_road_type, width = 15, height = 5, dpi = 300)
+```
+
+Analysis of the median
+```{r analysis of the median}
+median_edge_betweenness_road_type_l <- lapply(road_networks_l, function(net){
+  net %>%
+    edge_attr() %>%
+    as.data.frame() %>%
+    group_by(Type) %>%       # Group data by 'group' column
+    reframe(median = median(edge_betweenness/max(edge_betweenness)))}
+  ) 
+median_edge_betweenness_road_type_df <- median_edge_betweenness_road_type_l %>%
+  imap_dfr(~ .x %>% mutate("region" = .y))
+```
+
+### Robustness of results
+The following function from the Online Companion allow to check the sensitivity of node centrality measures when edges are included with a given probability
+```{r sensitivity of node centrality probabilistic network}
+# Define function for assessing and retaining edges based on edge
+# weight probabilities
+edge_prob <- function(net, nsim = 1000, probs) {
+  net_list <- list()
+  for (i in 1:nsim) {
+    sub_set <- NULL
+    for (j in 1:ecount(net)) {
+      temp <- rbinom(1, 1, prob = probs[j])
+      if (temp == 1) {
+        sub_set <- c(sub_set, j)
+      }
+    }
+    net_list[[i]] <-
+      igraph::delete_edges(net, which(!(seq(1, ecount(
+        net
+      ))
+      %in% sub_set)))
+  }
+  return(net_list)
+}
+
+# Define function for assessing node statistic of interest
+compile_stat <- function(net_list, met) {
+  out <- matrix(NA, vcount(net_list[[1]]), length(net_list))
+  for (i in seq_len(length(net_list))) {
+    # Select measure of interest based on met and calculate(same as above)
+    if (met == "degree") {
+      out[, i] <- igraph::degree(net_list[[i]])
+    }
+    else  {
+      if (met == "betweenness") {
+        out[, i] <- igraph::betweenness(net_list[[i]])
+      }
+      else {
+        if (met == "eigenvector") {
+          out[, i] <- igraph::eigen_centrality(net_list[[i]])$vector
+        }
+      }
+    }
+  }
+  return(out)
+}
+```
+
+A small modification allows to assess the sensitivity of the edge betweenness when edges are included with a given probability.
+First, we slightly modify the function that creates a list of networks so that it also returns which edges have been selected in the original network.
+```{r sensitivity of edge betweenness centrality probabilistic network}
+# new version of edge_prob
+edge_prob_and_subset <- function(net, nsim = 1000, probs) {
+  edge_subset_list <- list()
+  net_list <- list()
+  for (i in 1:nsim) {
+    sub_set <- NULL
+    for (j in 1:ecount(net)) {
+      temp <- rbinom(1, 1, prob = probs[j])
+      if (temp == 1) {
+        sub_set <- c(sub_set, j)
+      }
+    }
+    # save the subset of edges in the list
+    edge_subset_list[[i]] <- sub_set
+    
+    # find the network containing the subset of edges only
+    temp_net_i <- igraph::delete_edges(net, which(!(seq(1, ecount(
+        net
+      ))
+      %in% sub_set)))
+    
+    # identify and delete isolated nodes (as they affect the maximum value of the betweenness)
+    temp_net_i_isolated_nodes <- which(igraph::degree(temp_net_i)==0)
+    temp_net_i <- igraph::delete_vertices(temp_net_i,
+                                  temp_net_i_isolated_nodes)
+    net_list[[i]] <- temp_net_i
+  }
+  net_edge_subset_list <- list(subsets=edge_subset_list,nets=net_list)
+  return(net_edge_subset_list)
+}
+```
+
+Then, we compute the edge betweenness for each of the realisation of the probabilistic network 
+```{r stats for edge betweenness centrality}
+# Define function for assessing edge betweenness
+compile_stat_edge_betweenness <- function(net, net_edge_subset_list) {
+  
+  # count the edges
+  n_edges <- ecount(net)
+  
+  # extract info on subsets and nets
+  edge_subset_list <- net_edge_subset_list$subsets
+  net_list <- net_edge_subset_list$nets
+  
+  #initialise output
+  out <- matrix(NA, n_edges, length(net_list))
+  
+  # for each elemnt of the netlist, compute the betweenness and save it while retaining info of the edge id
+  for (i in seq_len(length(net_list))) {
+    # find the network i and its size
+    net_i <- net_list[[i]]
+    n_net_i <- vcount(net_i)
+    
+    # compute the betwenness
+    betwenness_i <- igraph::edge_betweenness(net_i,
+                                         weights = E(net_i)$weight)
+    
+    # normalise betweenness for easier comparison
+    normalised_betweenness_i <- 2*betwenness_i/((n_net_i-1)*(n_net_i-2))
+    
+    # fill the relevant sections of the matrix
+    out[edge_subset_list[[i]], i] <- normalised_betweenness_i
+    
+    # give indication of how long it will take
+    print(i)
+  }
+  return(out)
+}
+```
+
+#### Degree centrality
+Let us assign a probability to each edge depending on whether it is certain (prob 1) or not (prob p, to regulate).
+Then create 100 networks, retaining each edge with the above probability.
+```{r Create 100 realisations of a probabilistic network}
+# extract Empire network attributes
+empire_network <- road_networks_l$Empire
+empire_network_edge_attr <- edge_attr(empire_network)
+empire_network_vertex_attr <- vertex_attr(empire_network)
+
+# define probability for edges using uncertainty on their existence
+edge_prob_df<-ifelse(empire_network_edge_attr$Segment_s=="Certain",1,0.8)
+empire_edge_prob <- edge_prob(empire_network,
+                              nsim=100,
+                              prob=edge_prob_df)
+```
+
+Plot an example of one of the resulting networks
+```{r example probabilistic network}
+example_graph <- empire_edge_prob[[1]]
+example_graph_edge_attr_df <- as.data.frame(edge_attr(example_graph))
+example_graph_vertex_attr_df <- as.data.frame(vertex_attr(example_graph))
+
+# bounding box
+min_lon <- min(st_coordinates(example_graph_vertex_attr_df$geometry)[,1])
+max_lon <- max(st_coordinates(example_graph_vertex_attr_df$geometry)[,1])
+min_lat <- min(st_coordinates(example_graph_vertex_attr_df$geometry)[,2])
+max_lat <- max(st_coordinates(example_graph_vertex_attr_df$geometry)[,2])
+
+# initialise plot
+  result_plot <- ggplot() +
+    theme_minimal() + 
+    geom_sf(data = world_sf) +
+    geom_sf(data = example_graph_edge_attr_df,
+            aes(geometry = geometry)) +
+
+  # define observation window
+  coord_sf(xlim = c(min_lon+1.25, max_lon-1.25), 
+             ylim = c(min_lat+1.25, max_lat-1.25))
+ 
+  plot(result_plot)
+
+```
+
+Find degree statistics for each node.
+```{r degree stats}
+dg_stat <- compile_stat(empire_edge_prob, met = "degree")
+```
+
+For the largest-degree node, check how the degree is affected by the process.
+```{r effect on maximum degree node}
+#node with largest degree in the original
+max_deg_node <- data.frame(val = dg_stat[which.max(empire_network_vertex_attr$degree),])
+max_degree_prob <- ggplot(max_deg_node, aes(val)) +
+  geom_histogram(binwidth = 1) +
+  xlab("Degree Centrality of maximum degree node") +
+  geom_vline(xintercept = mean(max_deg_node$val), col = "red") +
+  theme_bw()
+
+# save plot
+#ggsave("figures/max_degree_prob.pdf", max_degree_prob, width = 3.5, height = 2.75)
+#ggsave("figures/max_degree_prob.jpeg", max_degree_prob, width = 3.5, height = 2.75, dpi = 300)
+```
+
+Create a plot to show the median value of the degree of each node for simulation and confidence interval for each node. The nodes are ordered according to their degree in the original network
+```{r plot effect of probability on degree}
+# Create data frame containing degree and site id for nsim random
+# similarity matrices
+df <- matrix(NA, 1, 2) # define empty matrix
+# calculate degree centrality for each random run and bind in
+# matrix along with id
+for (i in seq_len(length(empire_edge_prob))) {
+  temp <- cbind(seq(1, length(empire_edge_prob[[i]])),
+                as.numeric(igraph::degree(empire_edge_prob[[i]])))
+  df <- rbind(df, temp)
+}
+
+df <- as.data.frame(df[-1, ]) # remove first row in initial matrix
+colnames(df) <- c("node", "degree") # add column names
+
+# Use summarise function to create median, confidence intervals,
+# and other statistics for degree by node
+out <- df %>%
+  group_by(node) %>%
+  dplyr::summarise(
+    Mean = mean(degree),
+    Median = median(degree),
+    Max = max(degree),
+    Min = min(degree),
+    Conf = sd(degree) * 1.96
+  )
+out$node <- as.numeric(out$node)
+out <- out[order(as.numeric(igraph::degree(empire_network))), ]
+
+# Create data frame of degree centrality for the original network
+dg_wt <- data.frame(degree = as.numeric(igraph::degree(empire_network))) %>%
+  arrange(degree)
+
+# Plot the results
+degree_prob <- ggplot() +
+  geom_errorbar(data = out, aes(
+    x = reorder(node, Median),
+    ymin = Median - Conf,
+    ymax = Median + Conf
+  )) +
+  geom_line(
+    data = out,
+    aes(
+      x = reorder(node, Median),
+      y = Median,
+      group = 1
+    ),
+    col = "red",
+    lwd = 1.5,
+    alpha = 0.5
+  ) +
+  geom_path(
+    data = dg_wt,
+    aes(x = order(degree), y = degree),
+    col = "blue",
+    lwd = 1.5,
+    alpha = 0.5
+  ) +
+  theme_bw() +
+  ylab("Degree") +
+  scale_x_discrete(name = "Nodes in Rank Order of Degree") +
+  theme(
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.text.y = element_text(size = rel(2)),
+    axis.title.x = element_text(size = rel(2)),
+    axis.title.y = element_text(size = rel(2)),
+    legend.text = element_text(size = rel(2))
+  )
+
+# save plot
+#ggsave("figures/degree_prob.pdf", degree_prob, width = 7, height = 5.5)
+#ggsave("figures/degree_prob.jpeg", degree_prob, width = 7, height = 5.5, dpi = 300)
+```
+
+#### Betweenness Centrality TO DO
+Find node betweenness statistics for each node.
+```{r node betweenness stats}
+b_stat <- compile_stat(empire_edge_prob, met = "betweenness")
+```
+
+Create a plot to show the median value of the betweenness of each node for simulation and confidence interval for each node. The nodes are ordered according to their betweenness in the original network
+```{r plot effect of probability on degree}
+# Create data frame containing degree and site id for nsim random
+# similarity matrices
+df_b <- matrix(NA, 1, 2) # define empty matrix
+# calculate degree centrality for each random run and bind in
+# matrix along with id
+for (i in seq_len(length(empire_edge_prob))) {
+  temp <- cbind(seq(1, length(empire_edge_prob[[i]])),
+                as.numeric(igraph::betweenness(empire_edge_prob[[i]])))
+  df_b <- rbind(df_b, temp)
+  print(i)
+}
+
+df_b <- as.data.frame(df_b[-1, ]) # remove first row in initial matrix
+colnames(df_b) <- c("node", "betweenness") # add column names
+
+# Use summarise function to create median, confidence intervals,
+# and other statistics for degree by node
+out_b <- df_b %>%
+  group_by(node) %>%
+  dplyr::summarise(
+    Mean = mean(betweenness),
+    Median = median(betweenness),
+    Max = max(betweenness),
+    Min = min(betweenness),
+    Conf = sd(betweenness) * 1.96
+  )
+out_b$node <- as.numeric(out_b$node)
+out_b <- out_b[order(as.numeric(igraph::betweenness(empire_network))), ]
+
+# Create data frame of degree centrality for the original network
+dg_b_wt <- data.frame(betweenness = as.numeric(igraph::betweenness(empire_network))) %>%
+  arrange(betweenness)
+
+# Plot the results
+betweenness_prob <- ggplot() +
+  geom_errorbar(data = out_b, aes(
+    x = reorder(node, Median),
+    ymin = pmax(Median - Conf,0),
+    ymax = Median + Conf
+  )) +
+  geom_line(
+    data = out_b,
+    aes(
+      x = reorder(node, Median),
+      y = Median,
+      group = 1
+    ),
+    col = "red",
+    lwd = 1.5,
+    alpha = 0.5
+  ) +
+  geom_path(
+    data = dg_b_wt,
+    aes(x = order(betweenness), y = betweenness),
+    col = "blue",
+    lwd = 1.5,
+    alpha = 0.5
+  ) +
+  theme_bw() +
+  ylab("Node Betweenness") +
+  scale_x_discrete(name = "Nodes in Rank Order of Betweenness") +
+  theme(
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.text.y = element_text(size = rel(2)),
+    axis.title.x = element_text(size = rel(2)),
+    axis.title.y = element_text(size = rel(2)),
+    legend.text = element_text(size = rel(2))
+  )
+
+# save plot
+ggsave("figures/betweenness_prob.pdf", betweenness_prob, width = 7, height = 5.5)
+ggsave("figures/betweenness_prob.jpeg", betweenness_prob, width = 7, height = 5.5, dpi = 300)
+```
+
+#### Edge Betweenness centrality
+We now do the same for betweenness.
+First, let us define a list of 100 realisations of the probabilistic network, outputting also the edges that were selected
+```{r compute random networks}
+# extract Empire network attributes
+empire_network <- road_networks_l$Empire
+empire_network_edge_attr <- edge_attr(empire_network)
+empire_network_vertex_attr <- vertex_attr(empire_network)
+
+# define probability for edges using uncertainty on their existence
+edge_prob_df<-ifelse(empire_network_edge_attr$Segment_s=="Certain",1,0.8)
+
+# define edge probability and subsets
+empire_edge_prob_and_subset<-edge_prob_and_subset(empire_network,
+                        nsim=100,
+                        prob=edge_prob_df)
+```
+
+Then, compute the edge betweenness
+```{r compute betweenness stats}
+eb_stat <- compile_stat_edge_betweenness(empire_network,
+                              empire_edge_prob_and_subset)
+```
+
+Add info on main roads or secondary
+```{r eb stats by road type}
+# define df with info on road type
+eb_stat_and_type <- as.data.frame(eb_stat)
+eb_stat_and_type$Type <- empire_network_edge_attr$Type
+
+# for each random network, find betweenness by type
+eb_stat_type <- eb_stat_and_type %>%
+  group_by(Type) %>%
+  summarise(across(where(is.numeric), ~ mean(.x, na.rm = TRUE)))
+
+# compute stats of ratio
+eb_stat_ratio <- as.numeric(eb_stat_type[1,2:101]/eb_stat_type[2,2:101])
+mean(eb_stat_ratio)
+median(eb_stat_ratio)
+max(eb_stat_ratio)
+min(eb_stat_ratio)
+
+# plot histogram
+#node with largest degree in the original
+eb_stat_ratio <- data.frame(val = eb_stat_ratio)
+eb_stat_ratio_plot <- ggplot(eb_stat_ratio, aes(val)) +
+  geom_histogram(binwidth = 0.1) +
+  xlab("Ratio of edge betweenness centrality of main and secondary roads") +
+  geom_vline(xintercept = mean(eb_stat_ratio$val), col = "red") +
+  theme_bw()
+
+# save plot
+ggsave("figures/ratio_eb_main_secondary.pdf", eb_stat_ratio_plot, width = 5, height = 4)
+ggsave("figures/ratio_eb_main_secondary.jpeg", eb_stat_ratio_plot, width = 5, height = 4, dpi = 300)
+```
+
+## Centralisation of roads
+We want to estimate the degree of "centralisation" of the degree sequence, i.e., whether the system is regular or closer to a hub with spokes. 
+```{r compute gini index of the degree sequences}
+Gini_l <- lapply(road_networks_degree_l,Gini) 
+Gini_df <- do.call(rbind,Gini_l) %>% as.data.frame() %>% setNames("Gini")
+```
+
+Then we compute the Shannon entropy
+```{r Shannon entropy index}
+# define the entropy of a numerical vector
+shannon_entropy_f <- function(x){
+  if (any(is.na(x)))             {return(NA)}
+  else if (!is.numeric(x))   {stop("The input must be a numeric vector")}
+  else if (any(x<0))         {stop("Values may not be negative")}
+  else if (sum(x) == 0)      {stop("At least one of the values must be strictly positive")}
+  else {
+    # avoid issues with log2(0)
+    log_term <- ifelse(is.finite(log2(x/sum(x))),log2(x/sum(x)),0)
+    return(-sum(x/sum(x)*log_term))
+  }
+}
+
+# compute minimum-entropy degree sequence (based on Resolution of Yan's conjecture)
+min_deg_seq_f <- function(n,m){
+  # first special cases of small m
+  if (m < n-1)    {return(NA)}
+  else if (m == n-1)   {return(c(n-1,rep(1,n-1)))}
+  else if (m == n+2)   {return(c(n-1, rep(3,3),rep(1,n-4)))}
+  else if (m == n+4)   {return(c(n-1, rep(4,2),rep(3,2),rep(1,n-5)))}
+  else if (m == n+5)   {return(c(n-1,rep(4,4),rep(1,n-5)))}
+  else if (m <= 2*n-3) {return(c(n-1,m-n+2,rep(2,m-n+1),rep(1,2*n-m-3)))}
+  else if (m > 2*n-3)  {return(NA)}
+}
+
+# compute maximum-entropy degree sequence (Yan)
+max_deg_seq_f <- function(n,m){
+  q <- floor(2*m/n)
+  r <- 2*m-q*n
+  return(c(rep(q+1,r),rep(q,n-r)))
+}
+
+# compute normalised entropy
+normalised_shannon_entropy_f <- function(G){
+  # compute order and size
+  n <- vcount(G)
+  m <- ecount(G)
+  
+  # find deg sequences
+  deg_seq <- degree(G)
+  min_deg_seq <- min_deg_seq_f(n,m)
+  max_deg_seq <- max_deg_seq_f(n,m)
+  
+  # compute entropy of deg sequences
+  deg_seq_entropy <- shannon_entropy_f(deg_seq)
+  min_deg_seq_entropy <- shannon_entropy_f(min_deg_seq)
+  max_deg_seq_entropy <- shannon_entropy_f(max_deg_seq)
+  
+  # normalised entropy
+  normalised_entropy <- (deg_seq_entropy-min_deg_seq_entropy)/(max_deg_seq_entropy-min_deg_seq_entropy)
+  return(normalised_entropy)
+}
+
+# compute it for the networks entropy
+entropy_l <- lapply(road_networks_l,normalised_shannon_entropy_f) 
+entropy_df <- do.call(rbind,entropy_l) %>% as.data.frame() %>% setNames("entropy")
+```
+
+Save the results
+```{r save centralisation of roads}
+# define df
+centralisation_df <- data.frame(
+  province = rownames(Gini_df),
+  Gini = Gini_df$Gini,
+  entropy = entropy_df$entropy
+)
+
+# export df as csv
+write.csv(centralisation_df,"results/centralisation.csv")
+```
+
+Compute the Gini and entropy of the betweenness
+```{r inequality measures of betweenness}
+# Gini
+betweenness_Gini_l <-  lapply(
+  road_networks_l,
+  function(net){
+    nb <- V(net)$betweenness
+    return(Gini(nb))
+  }
+)
+betweenness_Gini_df <- do.call(rbind,betweenness_Gini_l) %>% as.data.frame() %>% setNames("Gini")
+
+# entropy
+betweenness_entropy_l <-  lapply(
+  road_networks_l,
+  function(net){
+    nb <- V(net)$betweenness
+    size = vcount(net)
+    return(shannon_entropy_f(nb)/log2(size))
+  }
+)
+betweenness_entropy_df <- do.call(rbind,betweenness_entropy_l) %>% as.data.frame() %>% setNames("entropy")
+
+# write results
+#write.csv(cbind(betweenness_Gini_df,betweenness_entropy_df),"results/distributed_linear_centralised_betweenness.csv")
+```
+
+Add global clustering coefficient and average path length to identify distributed, linear and centralised networks.
+```{r distributed, linear, centralised}
+# average path length
+average_path_length_weighted_l <-  lapply(road_networks_l,average.path.length)
+average_path_length_unweighted_l <-  lapply(road_networks_l,average.path.length, weights = NA)
+
+# transform into a dataframe
+average_path_length_weighted_df <- do.call(rbind,average_path_length_weighted_l) %>% 
+  as.data.frame() %>% 
+  setNames("average path length (weighted)")
+average_path_length_unweighted_df <- do.call(rbind,average_path_length_unweighted_l) %>% 
+  as.data.frame() %>% 
+  setNames("average path length (unweighted)")
+
+# add all info into a df
+distributed_linear_centralised_df <- data.frame(
+  province = rownames(Gini_df),
+  size = global_indices_df$`number of edges`,
+  Gini = Gini_df$Gini,
+  entropy = entropy_df$entropy,
+  average_path_length_unweighted = average_path_length_unweighted_df$`average path length (unweighted)`,
+  average_path_length_weighted = average_path_length_weighted_df$`average path length (weighted)`,
+  average_clustering_coefficient = global_indices_df$`average clustering coefficient`,
+  average_path_length_unweighted_ratio = average_path_length_unweighted_df$`average path length (unweighted)`/global_indices_df$`number of edges`
+)
+
+# export df as csv
+#write.csv(distributed_linear_centralised_df,"results/distributed_linear_centralised.csv")
+```
+
+### Other incomplete centralisation experiments
+Explore centralisation of main connections (i.e., those with high betweenness centrality). 
+We identify these based on interquartile range
+```{r high betweenness edges}
+# extract main edges function
+main_edges_f <- function(net){
+  # extract edge betweenness
+  eb <- E(net)$edge_betweenness
+  
+  # Calculate Q3 
+  Q3 <- quantile(eb, 0.75)
+  
+  # Extract main edges
+  main_edges <- E(road_networks_l$Britannia)[eb >= Q3]
+  
+  # 
+}
+
+# extract network
+net_ex <- road_networks_l[[gu]]
+
+
+# extract betweenness values
+eb <- road_networks_edge_betweenness_l[[gu]]
+
+# Calculate Q3 
+Q3 <- quantile(eb, 0.75)
+
+# Extract main edges
+main_edges <- E(road_networks_l$Britannia)[eb >= Q3]
+plot(main_edges$geometry)
+
+sub_net <- 
+
+
+# Alternatively, use interquartile range
+#Q1 <- quantile(eb, 0.25)
+#IQR <- Q3 - Q1
+#upper_bound <- Q3 + 1.5 * IQR
+#main_edges <- E(road_networks_l$Britannia)[eb >= Q3]
+
+
+```
+
+Find smallest connected network with high betweenenss
+```{r}
+eb_mst_f <- function(net){
+  mst_graph <- mst(net, weights = 1/E(net)$edge_betweenness)
+}
+eb_mst_l <- lapply(road_networks_l,eb_mst_f)
+eb_mst_entropy_l <- lapply(eb_mst_l, normalised_shannon_entropy_f) 
+mst_entropy_df <- do.call(rbind,eb_mst_entropy_l) %>% as.data.frame() %>% setNames("entropy")
+
+
+```
+
+## Correlation between structural properties and cities locations
+For each province, we associate the capital city with the closest nodes on the network and study their properties.
+First, compute the distances between the capital cities and the nodes
+```{r capital cities, distance to network}
+# define geographical units of interest
+geographical_units <- intersect(c(provinces,"Italia"),provincial_capitals_sf$region_alt)
+
+# initialise list of distances
+distance_capital_to_nodes_l <- list()
+
+# for each unit, find distance
+for (gu in geographical_units) {
+  distance_capital_to_nodes <- c(st_distance(
+    provincial_capitals_sf[provincial_capitals_sf$region_alt == gu,],
+    V(road_networks_l[[gu]])$geometry
+    ))
+  # update list with vector of distances
+  distance_capital_to_nodes_l[[gu]] <- distance_capital_to_nodes
+  
+  # associate distance info to node
+  V(road_networks_l[[gu]])$distance_to_capital <- distance_capital_to_nodes
+}
+```
+
+For each geographical unit, check if top five closest points are in the top centrality quartile.
+```{r capital centrality quantile}
+# initialise df
+capital_centrality <- data.frame(
+  province = rep(geographical_units,each=5),
+  distance_rank = rep(1:5,length(geographical_units)),
+  distance = NA,
+  betweenness_quantile = NA,
+  closeness_quantile = NA,
+  degree_quantile = NA,
+  eigenvector_quantile = NA
+)
+
+# populate the df
+# for each unit, find distance
+for (gu in geographical_units) {
+  # extract df of vertex attributes
+  vertex_attr_gu_df <- road_networks_l[[gu]] %>%
+    vertex_attr() %>%
+    as.data.frame()
+  
+  # sort them by distance to capital
+  vertex_attr_gu_df <- vertex_attr_gu_df[order(vertex_attr_gu_df$distance_to_capital),]
+ 
+  # fill df
+  capital_centrality[capital_centrality$province == gu, "distance"] <- vertex_attr_gu_df$distance_to_capital[1:5]
+  capital_centrality[capital_centrality$province == gu, "betweenness_quantile"] <-  ecdf(vertex_attr_gu_df$betweenness)(vertex_attr_gu_df$betweenness[1:5])
+  capital_centrality[capital_centrality$province == gu, "degree_quantile"] <-  ecdf(vertex_attr_gu_df$degree)(vertex_attr_gu_df$degree[1:5])
+  capital_centrality[capital_centrality$province == gu, "closeness_quantile"] <-  ecdf(vertex_attr_gu_df$closeness)(vertex_attr_gu_df$closeness[1:5])
+  capital_centrality[capital_centrality$province == gu, "closeness_quantile"] <-  ecdf(vertex_attr_gu_df$closeness)(vertex_attr_gu_df$closeness[1:5])
+  capital_centrality[capital_centrality$province == gu, "eigenvector_quantile"] <-  ecdf(vertex_attr_gu_df$eigenvector)(vertex_attr_gu_df$eigenvector[1:5])
+}
+
+# export results
+#write.csv(capital_centrality,"results/capital_centrality.csv")
+```
+
+For each geographical unit, check correlation between centrality and distance from capital
+```{r test  correlations with measures}
+Spearman_cor_centrality_distance <- data.frame(
+  province = geographical_units,
+  betweenness_rho = NA,
+  betweenness_p = NA,
+  closeness_rho = NA,
+  closeness_p = NA,
+  degree_rho = NA,
+  degree_p = NA,
+  eigenvector_rho = NA,
+  eigenvector_p = NA
+)
+
+for (gu in geographical_units) {
+   # extract df of vertex attributes
+  vertex_attr_gu_df <- road_networks_l[[gu]] %>%
+    vertex_attr() %>%
+    as.data.frame()
+  
+  # test correlations
+  betweenness_test <- cor.test(vertex_attr_gu_df$distance_to_capital,vertex_attr_gu_df$betweenness, method = "spearman")
+  closeness_test <- cor.test(vertex_attr_gu_df$distance_to_capital,vertex_attr_gu_df$closeness, method = "spearman")
+  degree_test <- cor.test(vertex_attr_gu_df$distance_to_capital,vertex_attr_gu_df$degree, method = "spearman")
+  eigenvector_test <- cor.test(vertex_attr_gu_df$distance_to_capital,vertex_attr_gu_df$eigenvector, method = "spearman")
+  
+  # add results to df  
+  Spearman_cor_centrality_distance[Spearman_cor_centrality_distance$province == gu, "betweenness_rho"] <- betweenness_test$estimate
+  Spearman_cor_centrality_distance[Spearman_cor_centrality_distance$province == gu, "betweenness_p"] <- betweenness_test$p.value
+  Spearman_cor_centrality_distance[Spearman_cor_centrality_distance$province == gu, "closeness_rho"] <- closeness_test$estimate
+  Spearman_cor_centrality_distance[Spearman_cor_centrality_distance$province == gu, "closeness_p"] <- closeness_test$p.value
+  Spearman_cor_centrality_distance[Spearman_cor_centrality_distance$province == gu, "degree_rho"] <- degree_test$estimate
+  Spearman_cor_centrality_distance[Spearman_cor_centrality_distance$province == gu, "degree_p"] <- degree_test$p.value
+  Spearman_cor_centrality_distance[Spearman_cor_centrality_distance$province == gu, "eigenvector_rho"] <- eigenvector_test$estimate
+  Spearman_cor_centrality_distance[Spearman_cor_centrality_distance$province == gu, "eigenvector_p"] <- eigenvector_test$p.value
+}
+
+# export results
+#write.csv(Spearman_cor_centrality_distance,"results/Spearman_cor_centrality_distance.csv")
+```
+
+## Correlation between structural properties population in Hanson.
+We correlate the population data for each city with the centrality measure of their nearest point.
+```{r centrality and population of cities}
+# initialise list
+pop_and_centrality_l<-list()
+
+for (gu in geographical_units) {
+  # extract cities in each geographical unit
+  cities_gu <- cities_sf_l[[gu]]
+  
+  # exclude cases of provinces without cities
+  if(!is.null(cities_gu)){
+    # extract network 
+    net_gu <- road_networks_l[[gu]]
+    vertex_attr_gu_df <- net_gu %>%
+      vertex_attr() %>%
+      as.data.frame()
+    
+    # associate each city to the nearest node
+    nearest_node_to_city <- st_nearest_feature(cities_gu,V(net_gu)$geometry)
+    
+    # associate the the city the centrality of the nearest node
+    pop_and_centrality_l[[gu]] <- cbind(
+      cities_gu,
+      vertex_attr_gu_df[nearest_node_to_city,]
+      )
+  }
+}
+```
+
+Check correlation.
+```{r centrality and population correlation}
+# initialise df
+Spearman_cor_centrality_pop <- data.frame(
+  province = names(pop_and_centrality_l),
+  betweenness_rho = NA,
+  betweenness_p = NA,
+  closeness_rho = NA,
+  closeness_p = NA,
+  degree_rho = NA,
+  degree_p = NA,
+  eigenvector_rho = NA,
+  eigenvector_p = NA
+)
+
+for (gu in names(pop_and_centrality_l)) {
+   # extract df of vertex attributes
+  pop_and_centrality_gu <- pop_and_centrality_l[[gu]]
+  
+  # exclude cases with few cities
+  if ( nrow(pop_and_centrality_gu)>5){
+    # test correlations
+    betweenness_test <- cor.test(pop_and_centrality_gu$max_population ,pop_and_centrality_gu$betweenness, method = "spearman")
+    closeness_test <- cor.test(pop_and_centrality_gu$max_population,pop_and_centrality_gu$closeness, method = "spearman")
+    degree_test <- cor.test(pop_and_centrality_gu$max_population,pop_and_centrality_gu$degree, method = "spearman")
+    eigenvector_test <- cor.test(pop_and_centrality_gu$max_population,pop_and_centrality_gu$eigenvector, method = "spearman")
+  
+    # add results to df  
+    Spearman_cor_centrality_pop[Spearman_cor_centrality_pop$province == gu, "betweenness_rho"] <- betweenness_test$estimate
+    Spearman_cor_centrality_pop[Spearman_cor_centrality_pop$province == gu, "betweenness_p"] <- betweenness_test$p.value
+    Spearman_cor_centrality_pop[Spearman_cor_centrality_pop$province == gu, "closeness_rho"] <- closeness_test$estimate
+    Spearman_cor_centrality_pop[Spearman_cor_centrality_pop$province == gu, "closeness_p"] <- closeness_test$p.value
+    Spearman_cor_centrality_pop[Spearman_cor_centrality_pop$province == gu, "degree_rho"] <- degree_test$estimate
+    Spearman_cor_centrality_pop[Spearman_cor_centrality_pop$province == gu, "degree_p"] <- degree_test$p.value
+    Spearman_cor_centrality_pop[Spearman_cor_centrality_pop$province == gu, "eigenvector_rho"] <- eigenvector_test$estimate
+    Spearman_cor_centrality_pop[Spearman_cor_centrality_pop$province == gu, "eigenvector_p"] <- eigenvector_test$p.value
+  }
+}
+```
+
+
+## Save results as geojson
+Save the networks' nodes and edges as geojsons
+```{r save as geojson}
+for (gu in c(provinces,"Italia","Empire")) {
+  
+  # extract network, nodes and edges
+  net_gu <- road_networks_l[[gu]]
+  nodes <- st_as_sf(net_gu, "nodes")
+  edges <- st_as_sf(net_gu, "edges")
+
+  # define gu name
+  gu_name <- str_replace_all(gu," ","_")
+  
+  # Export nodes and edges to GeoJSON files
+  st_write(nodes, str_c("networks_geojson/",gu_name,"_nodes.geojson"), driver = "GeoJSON")
+  st_write(edges, str_c("networks_geojson/",gu_name,"_edges.geojson"), driver = "GeoJSON")
+  
+  # track progress
+  print(gu)
+}
+```
+

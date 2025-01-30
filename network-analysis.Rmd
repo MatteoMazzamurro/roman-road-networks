@@ -9,9 +9,19 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## Summary TO DO
-This code allows to reproduce the network analysis in the paper on Roman roads. 
-It includes the computation of classic global properties, geometric properties, and centrality. It compares the network with geometric models, and assesses the robustness of the results when a certain percentage of uncertain roads is omitted.
+## Summary
+This code allows to reproduce the network analysis in the paper on Roman roads.
+It is divided into the following sections:
+* Construction of road networks (for the whole Empire and individual provinces).
+* Computation of classic global network properties, geometric properties, and centrality. 
+* Comparison the network with geometric models.
+* Comparison with modern road networks.
+* Comparison of properties of main and secondary roads.
+(This includes an assessment of the robustness of the results when a certain percentage of uncertain roads is omitted).
+* Classification of road networks into linear/distributed and centralised.
+* Compare the distribution of cities and network properties.
+* Data export (as geojson files).
+
 ## Preliminaries
 ### R version and packages
 This document uses R version 4.3.0 (2023-04-21 ucrt). 
@@ -646,7 +656,7 @@ road_networks_l <- lapply(road_networks_l,  function(g) {
   )
 ```
 
-## Visuals
+### Visuals
 Plot Empire network with components
 ```{r Empire network components}
 # Empire data 
@@ -2078,7 +2088,7 @@ degree_prob <- ggplot() +
 #ggsave("figures/degree_prob.jpeg", degree_prob, width = 7, height = 5.5, dpi = 300)
 ```
 
-#### Betweenness Centrality TO DO
+#### Betweenness Centrality
 Find node betweenness statistics for each node.
 ```{r node betweenness stats}
 b_stat <- compile_stat(empire_edge_prob, met = "betweenness")
@@ -2157,8 +2167,8 @@ betweenness_prob <- ggplot() +
   )
 
 # save plot
-ggsave("figures/betweenness_prob.pdf", betweenness_prob, width = 7, height = 5.5)
-ggsave("figures/betweenness_prob.jpeg", betweenness_prob, width = 7, height = 5.5, dpi = 300)
+#ggsave("figures/betweenness_prob.pdf", betweenness_prob, width = 7, height = 5.5)
+#ggsave("figures/betweenness_prob.jpeg", betweenness_prob, width = 7, height = 5.5, dpi = 300)
 ```
 
 #### Edge Betweenness centrality
@@ -2213,12 +2223,13 @@ eb_stat_ratio_plot <- ggplot(eb_stat_ratio, aes(val)) +
   theme_bw()
 
 # save plot
-ggsave("figures/ratio_eb_main_secondary.pdf", eb_stat_ratio_plot, width = 5, height = 4)
-ggsave("figures/ratio_eb_main_secondary.jpeg", eb_stat_ratio_plot, width = 5, height = 4, dpi = 300)
+#ggsave("figures/ratio_eb_main_secondary.pdf", eb_stat_ratio_plot, width = 5, height = 4)
+#ggsave("figures/ratio_eb_main_secondary.jpeg", eb_stat_ratio_plot, width = 5, height = 4, dpi = 300)
 ```
 
 ## Centralisation of roads
-We want to estimate the degree of "centralisation" of the degree sequence, i.e., whether the system is regular or closer to a hub with spokes. 
+We want to estimate the degree of "centralisation" of the degree sequence, i.e., whether the system is regular or closer to a hub with spokes.
+For this we compute the Gini and the Shannon entropy of the degree sequence and the average clustering coefficient.
 ```{r compute gini index of the degree sequences}
 Gini_l <- lapply(road_networks_degree_l,Gini) 
 Gini_df <- do.call(rbind,Gini_l) %>% as.data.frame() %>% setNames("Gini")
@@ -2294,7 +2305,7 @@ centralisation_df <- data.frame(
 )
 
 # export df as csv
-write.csv(centralisation_df,"results/centralisation.csv")
+#write.csv(centralisation_df,"results/centralisation.csv")
 ```
 
 Compute the Gini and entropy of the betweenness
@@ -2324,7 +2335,7 @@ betweenness_entropy_df <- do.call(rbind,betweenness_entropy_l) %>% as.data.frame
 #write.csv(cbind(betweenness_Gini_df,betweenness_entropy_df),"results/distributed_linear_centralised_betweenness.csv")
 ```
 
-Add global clustering coefficient and average path length to identify distributed, linear and centralised networks.
+Add average clustering coefficient and average path length to identify distributed, linear and centralised networks.
 ```{r distributed, linear, centralised}
 # average path length
 average_path_length_weighted_l <-  lapply(road_networks_l,average.path.length)
@@ -2354,63 +2365,8 @@ distributed_linear_centralised_df <- data.frame(
 #write.csv(distributed_linear_centralised_df,"results/distributed_linear_centralised.csv")
 ```
 
-### Other incomplete centralisation experiments
-Explore centralisation of main connections (i.e., those with high betweenness centrality). 
-We identify these based on interquartile range
-```{r high betweenness edges}
-# extract main edges function
-main_edges_f <- function(net){
-  # extract edge betweenness
-  eb <- E(net)$edge_betweenness
-  
-  # Calculate Q3 
-  Q3 <- quantile(eb, 0.75)
-  
-  # Extract main edges
-  main_edges <- E(road_networks_l$Britannia)[eb >= Q3]
-  
-  # 
-}
-
-# extract network
-net_ex <- road_networks_l[[gu]]
-
-
-# extract betweenness values
-eb <- road_networks_edge_betweenness_l[[gu]]
-
-# Calculate Q3 
-Q3 <- quantile(eb, 0.75)
-
-# Extract main edges
-main_edges <- E(road_networks_l$Britannia)[eb >= Q3]
-plot(main_edges$geometry)
-
-sub_net <- 
-
-
-# Alternatively, use interquartile range
-#Q1 <- quantile(eb, 0.25)
-#IQR <- Q3 - Q1
-#upper_bound <- Q3 + 1.5 * IQR
-#main_edges <- E(road_networks_l$Britannia)[eb >= Q3]
-
-
-```
-
-Find smallest connected network with high betweenenss
-```{r}
-eb_mst_f <- function(net){
-  mst_graph <- mst(net, weights = 1/E(net)$edge_betweenness)
-}
-eb_mst_l <- lapply(road_networks_l,eb_mst_f)
-eb_mst_entropy_l <- lapply(eb_mst_l, normalised_shannon_entropy_f) 
-mst_entropy_df <- do.call(rbind,eb_mst_entropy_l) %>% as.data.frame() %>% setNames("entropy")
-
-
-```
-
-## Correlation between structural properties and cities locations
+## Roads and cities
+### Correlation between structural properties and cities locations
 For each province, we associate the capital city with the closest nodes on the network and study their properties.
 First, compute the distances between the capital cities and the nodes
 ```{r capital cities, distance to network}
@@ -2512,7 +2468,7 @@ for (gu in geographical_units) {
 #write.csv(Spearman_cor_centrality_distance,"results/Spearman_cor_centrality_distance.csv")
 ```
 
-## Correlation between structural properties population in Hanson.
+### Correlation between structural properties population in Hanson.
 We correlate the population data for each city with the centrality measure of their nearest point.
 ```{r centrality and population of cities}
 # initialise list
@@ -2597,11 +2553,10 @@ for (gu in c(provinces,"Italia","Empire")) {
   gu_name <- str_replace_all(gu," ","_")
   
   # Export nodes and edges to GeoJSON files
-  st_write(nodes, str_c("networks_geojson/",gu_name,"_nodes.geojson"), driver = "GeoJSON")
-  st_write(edges, str_c("networks_geojson/",gu_name,"_edges.geojson"), driver = "GeoJSON")
+  #st_write(nodes, str_c("networks_geojson/",gu_name,"_nodes.geojson"), driver = "GeoJSON")
+  #st_write(edges, str_c("networks_geojson/",gu_name,"_edges.geojson"), driver = "GeoJSON")
   
   # track progress
   print(gu)
 }
 ```
-

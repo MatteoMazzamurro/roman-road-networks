@@ -2366,7 +2366,7 @@ distributed_linear_centralised_df <- data.frame(
 ```
 
 ## Roads and cities
-### Correlation between structural properties and cities locations
+### Correlation between structural properties and capital cities locations
 For each province, we associate the capital city with the closest nodes on the network and study their properties.
 First, compute the distances between the capital cities and the nodes
 ```{r capital cities, distance to network}
@@ -2390,7 +2390,7 @@ for (gu in geographical_units) {
 }
 ```
 
-For each geographical unit, check if top five closest points are in the top centrality quartile.
+For each geographical unit, check if top five closest nodes are in the top centrality quartile.
 ```{r capital centrality quantile}
 # initialise df
 capital_centrality <- data.frame(
@@ -2416,15 +2416,34 @@ for (gu in geographical_units) {
  
   # fill df
   capital_centrality[capital_centrality$province == gu, "distance"] <- vertex_attr_gu_df$distance_to_capital[1:5]
-  capital_centrality[capital_centrality$province == gu, "betweenness_quantile"] <-  ecdf(vertex_attr_gu_df$betweenness)(vertex_attr_gu_df$betweenness[1:5])
-  capital_centrality[capital_centrality$province == gu, "degree_quantile"] <-  ecdf(vertex_attr_gu_df$degree)(vertex_attr_gu_df$degree[1:5])
-  capital_centrality[capital_centrality$province == gu, "closeness_quantile"] <-  ecdf(vertex_attr_gu_df$closeness)(vertex_attr_gu_df$closeness[1:5])
-  capital_centrality[capital_centrality$province == gu, "closeness_quantile"] <-  ecdf(vertex_attr_gu_df$closeness)(vertex_attr_gu_df$closeness[1:5])
-  capital_centrality[capital_centrality$province == gu, "eigenvector_quantile"] <-  ecdf(vertex_attr_gu_df$eigenvector)(vertex_attr_gu_df$eigenvector[1:5])
+  capital_centrality[capital_centrality$province == gu, "betweenness"] <- vertex_attr_gu_df$betweenness[1:5]
+  capital_centrality[capital_centrality$province == gu, "degree"] <- vertex_attr_gu_df$degree[1:5]
+  capital_centrality[capital_centrality$province == gu, "closeness"] <- vertex_attr_gu_df$closeness[1:5]
+  capital_centrality[capital_centrality$province == gu, "eigenvector"] <- vertex_attr_gu_df$eigenvector[1:5]
+  capital_centrality[capital_centrality$province == gu, "betweenness_quantile"] <-
+    ecdf(vertex_attr_gu_df$betweenness)(vertex_attr_gu_df$betweenness[1:5])
+  capital_centrality[capital_centrality$province == gu, "degree_quantile"] <- 
+    ecdf(vertex_attr_gu_df$degree)(vertex_attr_gu_df$degree[1:5])
+  capital_centrality[capital_centrality$province == gu, "closeness_quantile"] <-
+    ecdf(vertex_attr_gu_df$closeness)(vertex_attr_gu_df$closeness[1:5])
+  capital_centrality[capital_centrality$province == gu, "closeness_quantile"] <-
+    ecdf(vertex_attr_gu_df$closeness)(vertex_attr_gu_df$closeness[1:5])
+  capital_centrality[capital_centrality$province == gu, "eigenvector_quantile"] <-
+    ecdf(vertex_attr_gu_df$eigenvector)(vertex_attr_gu_df$eigenvector[1:5])
 }
 
 # export results
 #write.csv(capital_centrality,"results/capital_centrality.csv")
+```
+
+Select only nearest node and add coordinates and export results
+```{r export cities with centrality and coordinates}
+provincial_capitals_with_centrality_sf <- provincial_capitals_sf %>%
+  left_join(capital_centrality[capital_centrality$distance_rank==1,],
+            join_by(region == province)) %>%
+  cbind(data.frame(st_coordinates(provincial_capitals_with_centrality_sf)) %>% setNames(c("lon","lat")))
+st_write(provincial_capitals_with_centrality_sf, "results/provincial_capitals_with_centrality.shp")
+write.csv(st_drop_geometry(provincial_capitals_with_centrality_sf),"results/provincial_capitals_with_centrality.csv")
 ```
 
 For each geographical unit, check correlation between centrality and distance from capital
@@ -2466,6 +2485,82 @@ for (gu in geographical_units) {
 
 # export results
 #write.csv(Spearman_cor_centrality_distance,"results/Spearman_cor_centrality_distance.csv")
+```
+
+### Correlation between structural properties and cities locations
+Similar to the above, for each province, we associate the cities in Hanson's dataset with the closest node on the network and study their properties.
+First, find the closest node to each city in each network
+```{r closes nodes to cities}
+# define geographical units of interest
+geographical_units <- intersect(c(provinces,"Italia"),names(cities_sf_l))
+
+# initialise list of cities and nearest nodes
+cities_and_nodes_sf_l <- list()
+
+# for each unit, find distance
+for (gu in geographical_units) {
+  # extract cities and vertices info in the geographical unit
+  cities_and_nodes_gu_sf <- cities_sf_l[[gu]]
+  vertices_gu <- V(road_networks_l[[gu]])
+  vertex_attr_gu_df <- road_networks_l[[gu]] %>%
+    vertex_attr() %>%
+    as.data.frame() 
+  
+  # find nearest node
+  nearest_node_to_cities <- st_nearest_feature(
+    cities_and_nodes_gu_sf,
+    vertices_gu$geometry)
+  
+  # add distance
+  cities_and_nodes_gu_sf$distance <- st_distance(
+    cities_and_nodes_gu_sf,
+    vertices_gu$geometry[nearest_node_to_cities],
+    by_element = TRUE)
+  
+  # add info on vertex attributes
+  cities_and_nodes_gu_sf <- cbind(
+    cities_and_nodes_gu_sf,
+    vertex_attr_gu_df[nearest_node_to_cities,c("degree","closeness","betweenness","component","eigenvector")])
+  
+  # update list with vector of distances
+  cities_and_nodes_sf_l[[gu]] <- cities_and_nodes_gu_sf 
+}
+```
+
+Then add info on centrality quantile
+```{r cities centrality quantile}
+# reshape list as df
+cities_centrality <- map2_dfr(cities_and_nodes_sf_l, 
+                                 names(cities_and_nodes_sf_l), ~mutate(.x, province = .y))
+row.names(cities_centrality) <- NULL
+
+# initialise quantile info df
+cities_centrality$betweenness_quantile <- NA
+cities_centrality$closeness_quantile <- NA
+cities_centrality$degree_quantile <- NA
+cities_centrality$eigenvector_quantile <- NA
+
+# populate the df
+# for each unit, find distance
+for (gu in geographical_units) {
+  # extract df of vertex attributes
+  vertex_attr_gu_df <- road_networks_l[[gu]] %>%
+    vertex_attr() %>%
+    as.data.frame()
+  
+  cities_centrality_gu <- cities_centrality[cities_centrality$province==gu,]
+  
+  # fill df
+  cities_centrality[cities_centrality$province == gu,]$betweenness_quantile <-  ecdf(vertex_attr_gu_df$betweenness)(cities_centrality_gu$betweenness)
+  cities_centrality[cities_centrality$province == gu,]$degree_quantile <-  ecdf(vertex_attr_gu_df$degree)(cities_centrality_gu$degree)
+  cities_centrality[cities_centrality$province == gu,]$closeness_quantile <-  ecdf(vertex_attr_gu_df$closeness)(cities_centrality_gu$closeness)
+  cities_centrality[cities_centrality$province == gu,]$closeness_quantile <-  ecdf(vertex_attr_gu_df$closeness)(cities_centrality_gu$closeness)
+  cities_centrality[cities_centrality$province == gu,]$eigenvector_quantile <-  ecdf(vertex_attr_gu_df$eigenvector)(cities_centrality_gu$eigenvector)
+}
+
+# add lon lat by r
+cities_centrality <- cities_centrality %>% cbind(data.frame(st_coordinates(cities_centrality)) %>% setNames(c("lon","lat")))
+write.csv(st_drop_geometry(cities_centrality),"results/cities_centrality.csv")
 ```
 
 ### Correlation between structural properties population in Hanson.

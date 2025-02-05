@@ -2634,6 +2634,38 @@ for (gu in names(pop_and_centrality_l)) {
 ```
 
 
+### Histograms
+We create simple histograms to visualise the centrality quantiles of cities and capital cities
+```{r quantile histograms}
+# capital cities
+hist(capital_centrality$betweenness_quantile[capital_centrality$distance_rank==1],
+     main = "Histogram of betweenness quantiles for capital cities",
+     xlab = "quantile",
+     ylab = "number of cities")
+hist(capital_centrality$closeness_quantile[capital_centrality$distance_rank==1],
+     main = "Histogram of closeness quantiles for capital cities",
+     xlab = "quantile",
+     ylab = "number of cities")
+hist(capital_centrality$degree_quantile[capital_centrality$distance_rank==1],
+     main = "Histogram of degree quantiles for capital cities",
+     xlab = "quantile",
+     ylab = "number of cities")
+
+# all cities
+hist(cities_centrality$betweenness_quantile,
+     main = "Histogram of betweenness quantiles for all cities",
+     xlab = "quantile",
+     ylab = "number of cities")
+hist(cities_centrality$closeness_quantile,
+     main = "Histogram of closeness quantiles for all cities",
+     xlab = "quantile",
+     ylab = "number of cities")
+hist(cities_centrality$degree_quantile,
+     main = "Histogram of degree quantiles for all cities",
+     xlab = "quantile",
+     ylab = "number of cities")
+```
+
 ## Save results as geojson
 Save the networks' nodes and edges as geojsons
 ```{r save as geojson}

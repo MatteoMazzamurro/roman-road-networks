@@ -43,10 +43,11 @@ required_packages <- c("tidyverse",
                        "cowplot",
                        "deldir",
                        "cccd",
-                       "DescTools")
+                       "DescTools",
+                       "stplanr")
 ```
 
-*tidyverse* and *dplyr* offer a collection of methods for data analysis, that we use for data cleaning and visualisation. We use *sf* to read and handle shapefiles, *spatstat* for point processes and observation windows, *raster* to manage the coordinate projections, and *units* to ensure correct handling of distance units. We use *igraph* and *sfnetworks* to construct our network objects. *ggraph* allows to visualise graph objects based on the ggplot2 framework (ggplot2 is included in tidyverse), and *ggspatial* adds other visual features for maps. *RColorBrewer* and *colorRamps* allow efficient management of colours, and *cowplot* is used to create separate images of legends. *deldir*, *spatgraphs*, and *cccd* are used to create spatial graph models. Finally *DescTools* is used to compute the Gini coefficient of inequality. 
+*tidyverse* and *dplyr* offer a collection of methods for data analysis, that we use for data cleaning and visualisation. We use *sf* to read and handle shapefiles, *spatstat* for point processes and observation windows, *raster* to manage the coordinate projections, and *units* to ensure correct handling of distance units. We use *igraph* and *sfnetworks* to construct our network objects. *ggraph* allows to visualise graph objects based on the ggplot2 framework (ggplot2 is included in tidyverse), and *ggspatial* adds other visual features for maps. *RColorBrewer* and *colorRamps* allow efficient management of colours, and *cowplot* is used to create separate images of legends. *deldir*, *spatgraphs*, and *cccd* are used to create spatial graph models. *DescTools* is used to compute the Gini coefficient of inequality. *stplanr* is used to add a buffer zone aroudn a sf.
 
 One needs to install them if they are not installed yet.
 ```{r install packages}
@@ -76,7 +77,8 @@ Note that we use the following versions of the packages:
 * cowplot       1.1.3
 * deldir        1.0.9
 * cccd          1.6
-* Desktool      0.99.58
+* Desctool      0.99.58
+* stplanr       1.2.3
 
 If a package has been updated since the release of this code, using the newer version may cause issues.
 If this is the case, one can try to solve them by installing the specific versions of the packages by uncommenting and running the following code. 
@@ -105,6 +107,8 @@ Note, however, that these older versions of the packages may not be available fo
 # install_version("cowplot", version = "1.1.3")
 # install_version("deldir", version = "1.0.9")
 # install_version("cccd", version = "1.6")
+# install_version("Desctool", version = "0.99.58")
+# install_version("stplanr", version = "1.2.3")
 # 
 # #load packages
 # invisible(lapply(required_packages_analysis, library, character.only = TRUE))
@@ -142,7 +146,7 @@ provinces_sf <- read_sf("./data/roman_provinces_simple/roman_provinces.shp") # O
 cities_df <- read.csv("./data/Hanson_size_population.csv")
 
 # provincial capitals
-provincial_capitals_df <- read.csv("./data/provincial_capitals.csv") 
+provincial_capitals_df <- read.csv("./data/provincial_capitals_2.csv") 
 
 # Pleiades 
 Pleiades_sf <- read_sf("./data/ancient_sites_pleiades/pleiades_sett_vil_st_fort.shp") 
@@ -243,12 +247,12 @@ cities_with_provinces_sf <- st_join(cities_sf, provinces_sf, join = st_intersect
 Pleiades_with_provinces_sf <- st_join(Pleiades_sf, provinces_sf, join = st_intersects)
 modern_roads_with_provinces_sf <- st_join(modern_roads_sf, provinces_sf, join = st_intersects)
 
+
 # for modern roads, select only area within provinces and transform multilinestrings into linestring
 modern_roads_with_provinces_sf <- modern_roads_with_provinces_sf[!is.na(modern_roads_with_provinces_sf$province),]
 modern_roads_with_provinces_sf <- modern_roads_with_provinces_sf %>%
                                                   st_line_merge() %>%
                                                   st_cast("LINESTRING")
-
 # data by country
 roads_with_countries_sf <- st_join(roads_sf, countries_sf, join = st_intersects)
 cities_with_countries_sf <- st_join(cities_sf, countries_sf, join = st_intersects)
@@ -2862,6 +2866,22 @@ hist(cities_centrality$degree_quantile,
      main = "Histogram of degree quantiles for all cities",
      xlab = "quantile",
      ylab = "number of cities")
+
+# non-capital cities
+non_capital_centrality <- cities_centrality[!
+  cities_centrality$netlogoID %in% na.omit(provincial_capitals_df$netlogoID_Hanson),]
+hist(non_capital_centrality$betweenness_quantile,
+     main = "Histogram of betweenness quantiles for all cities",
+     xlab = "quantile",
+     ylab = "number of cities")
+hist(non_capital_centrality$closeness_quantile,
+     main = "Histogram of closeness quantiles for all cities",
+     xlab = "quantile",
+     ylab = "number of cities")
+hist(non_capital_centrality$degree_quantile,
+     main = "Histogram of degree quantiles for all cities",
+     xlab = "quantile",
+     ylab = "number of cities")
 ```
 
 Save the histograms as png and svg files (without labels)
@@ -2902,6 +2922,20 @@ for(centrality in c("betweenness","closeness","degree")){
      ylab = "")
   axis(1, at = seq(0,1,by=0.2))
   dev.off()
+  
+  # non capitals
+  svg(str_c("./results/",centrality,"_non_capitals.svg"), 
+      width = width_in, 
+      height = height_in)
+  par(mar = c(1, 1, 0, 0), family = "Arial", ps = 5)
+  hist(non_capital_centrality[[str_c(centrality,"_quantile")]],
+     xlim = c(0, max(non_capital_centrality[[str_c(centrality,"_quantile")]], 
+                     na.rm = TRUE)),
+     main = "",
+     xlab = "",
+     ylab = "")
+  axis(1, at = seq(0,1,by=0.2))
+  dev.off()
 }
 
 # save as png
@@ -2932,6 +2966,22 @@ for(centrality in c("betweenness","closeness","degree")){
   par(mar = c(1, 1, 0, 0), family = "Arial", ps = 5)
   hist(cities_centrality[[str_c(centrality,"_quantile")]],
      xlim = c(0, max(cities_centrality[[str_c(centrality,"_quantile")]], 
+                     na.rm = TRUE)),
+     main = "",
+     xlab = "",
+     ylab = "")
+  axis(1, at = seq(0,1,by=0.2))
+  dev.off()
+  
+   # capital cities
+  png(str_c("./results/",centrality,"_non_capitals.png"), 
+      width = width_in, 
+      height = height_in,
+      units = "in", 
+      res = 300)
+  par(mar = c(1, 1, 0, 0), family = "Arial", ps = 5)
+  hist(non_capital_centrality[[str_c(centrality,"_quantile")]],
+     xlim = c(0, max(non_capital_centrality[[str_c(centrality,"_quantile")]], 
                      na.rm = TRUE)),
      main = "",
      xlab = "",

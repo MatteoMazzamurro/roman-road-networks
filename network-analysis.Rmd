@@ -117,7 +117,8 @@ First import the original data
 roads_sf <- read_sf("./data/roman_roads/roman_roads.shp")
 
 # provinces
-provinces_sf <- read_sf("./data/roman_provinces/roman_provinces.shp") 
+#provinces_sf <- read_sf("./data/roman_provinces/roman_provinces.shp") # Full 3D version (not on GitHub)
+provinces_sf <- read_sf("./data/roman_provinces_simple/roman_provinces.shp") # OLD 3D version
 
 # cities
 cities_df <- read.csv("./data/Hanson_size_population.csv")
@@ -1816,6 +1817,65 @@ boxplot_betweenness_by_province_and_road_type <- ggplot(
 #ggsave("figures/boxplot_edge_betweenness.jpeg", boxplot_betweenness_by_province_and_road_type, width = 15, height = 5, dpi = 300)
 ```
 
+Boxplot without Italian regios
+```{r boxplots with no Italian regios}
+# Boxplot
+boxplot_betweenness_by_province_and_road_type <- ggplot(
+    edge_betweenness_road_type_provinces_df[
+      !str_detect(edge_betweenness_road_type_provinces_df$region,"Regio"),
+    ],
+    aes(
+      x = reorder(region, median_value), 
+      y = edge_betweenness, 
+      fill = Type)) +
+  geom_boxplot(outlier.shape = NA, size = 0.1) +
+  scale_y_continuous(limits = c(0, 1)) +  # Set y-axis limits
+  labs(
+    title = "Edge betweenness by province and road type",
+    x = "Province",
+    y = "Value",
+    fill = "Type"
+  ) +
+  theme_minimal(base_size = 3, base_family = "Arial") + 
+  theme(
+    axis.text = element_text(size = 3),
+    axis.title = element_text(size = 3),
+    plot.title = element_text(size = 3, face = "bold")
+  ) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggsave("./results/boxplot_edge_betweenness.svg", boxplot_betweenness_by_province_and_road_type, width = 89, height = 38, units = "mm")
+ggsave("./results/boxplot_edge_betweenness.jpeg", boxplot_betweenness_by_province_and_road_type, width = 89, height = 38, units = "mm", dpi = 300)
+
+# save without axes and titles
+boxplot_betweenness_by_province_and_road_type <- ggplot(
+    edge_betweenness_road_type_provinces_df[
+      !str_detect(edge_betweenness_road_type_provinces_df$region,"Regio"),
+    ],
+    aes(
+      x = reorder(region, median_value), 
+      y = edge_betweenness, 
+      fill = Type)) +
+  geom_boxplot(outlier.shape = NA, size = 0.1) +
+  scale_y_continuous(limits = c(0, 1)) +  # Set y-axis limits
+  labs(
+    title = "",
+    x = "",
+    y = "",
+    fill = "Type"
+  ) +
+  theme_minimal(base_size = 3, base_family = "Arial") + 
+  theme(
+    axis.text = element_text(size = 3),
+    axis.title = element_text(size = 3),
+    plot.title = element_text(size = 3, face = "bold")
+  ) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggsave("./results/boxplot_edge_betweenness_no_axes.svg", boxplot_betweenness_by_province_and_road_type, width = 89, height = 38, units = "mm")
+ggsave("./results/boxplot_edge_betweenness_no_axes.jpeg", boxplot_betweenness_by_province_and_road_type, width = 89, height = 38, units = "mm", dpi = 300)
+```
+
 Analysis of the median
 ```{r analysis of the median}
 median_edge_betweenness_road_type_l <- lapply(road_networks_l, function(net){
@@ -2633,6 +2693,119 @@ for (gu in names(pop_and_centrality_l)) {
 }
 ```
 
+### Assess robustness of association between network measures and cities locations
+```{r robustness cities centrality}
+# lists of dfs with info on centrality measures
+centrality_robustness_l <- list()
+
+# initialise df for capital
+capitals_robustness_df <- provincial_capitals_sf 
+
+# for each gu add dataframe to list
+geographical_units_no_regios <- geographical_units[!str_detect(geographical_units,"\\(")]
+geographical_units_no_regios <- geographical_units_no_regios[!geographical_units_no_regios=="Roma"]
+
+for (gu in geographical_units_no_regios) {
+  # extract provincial network and edge attributes
+  network_gu <- road_networks_l[[gu]]
+  network_gu_edge_attr <- edge_attr(network_gu)
+  network_gu_vertex_attr <- vertex_attr(network_gu)
+  
+  # define probability for edges using uncertainty on their existence
+  edge_prob_gu_df<-ifelse(network_gu_edge_attr$Segment_s=="Certain",1,0.8)
+  edge_prob_gu <- edge_prob(network_gu,
+                            nsim=100,
+                            prob=edge_prob_gu_df)
+  
+  # initialise list of cities and nearest nodes
+  cities_and_nodes_gu_sf <- cities_sf_l[[gu]][,c("primary_key","ancient_toponym")]
+  
+  # find provincial capital
+  provincial_capital_gu_sf <-
+    provincial_capitals_sf[
+      provincial_capitals_sf$region_alt == gu,]
+  
+  # for each subnetwork, compute the centrality measures
+  for (i in 1:100){
+    # extract network
+    net_gu_i <- edge_prob_gu[[i]]
+    
+    # extract vertices info
+    vertices_gu_i <- cbind(
+      as.data.frame(V(net_gu_i)),
+      as.data.frame(vertex.attributes(net_gu_i)))
+    
+    # compute node measures
+    deg_gu_i <- degree(net_gu_i)
+    har_gu_i <- harmonic_centrality(net_gu_i)
+    bet_gu_i <- betweenness(net_gu_i)
+
+    # identify the node closest to each city
+    nearest_node_to_cities_gu_i <- st_nearest_feature(
+      cities_and_nodes_gu_sf,
+      vertices_gu_i$geometry)
+    
+    # nearest node to capital
+    nearest_node_to_capital_gu_i <- st_nearest_feature(
+      provincial_capital_gu_sf,
+      vertices_gu_i$geometry)
+    
+    # find rank of centrality of nodes closest to cities
+    cities_and_nodes_gu_sf[,paste0("deg_",i)] <-
+      ecdf(deg_gu_i)(deg_gu_i[nearest_node_to_cities_gu_i])
+    cities_and_nodes_gu_sf[,paste0("har_",i)] <-
+      ecdf(har_gu_i)(har_gu_i[nearest_node_to_cities_gu_i])
+    cities_and_nodes_gu_sf[,paste0("bet_",i)] <-
+      ecdf(bet_gu_i)(bet_gu_i[nearest_node_to_cities_gu_i])
+    
+    # find rank of centrality of node closest to capital
+    capitals_robustness_df[
+      capitals_robustness_df$region_alt ==gu,
+      paste0("deg_",i)]<-
+      ecdf(deg_gu_i)(deg_gu_i[nearest_node_to_capital_gu_i])
+    capitals_robustness_df[
+      capitals_robustness_df$region_alt==gu,
+      paste0("har_",i)] <-
+      ecdf(har_gu_i)(har_gu_i[nearest_node_to_capital_gu_i])
+    capitals_robustness_df[
+      capitals_robustness_df$region_alt==gu,
+      paste0("bet_",i)] <-
+      ecdf(bet_gu_i)(bet_gu_i[nearest_node_to_capital_gu_i])
+  }
+  
+  # add values to list 
+  centrality_robustness_l[[gu]] <- cities_and_nodes_gu_sf
+  print(gu)
+}
+```
+
+Reshape the list as a dataframe and save it as a .csv
+```{r transform centrality robustness list into dataframe}
+# initialise with values for Achaia
+centrality_robustness_df <-
+  cbind(centrality_robustness_l$Achaia, province = "Achaia")
+
+for (gu in geographical_units_no_regios[
+  !geographical_units_no_regios=="Achaia"]) {
+  centrality_robustness_df <-
+    rbind(centrality_robustness_df,
+          cbind(centrality_robustness_l[[gu]],province=gu))
+}
+
+# save result as csv
+write.csv(
+  centrality_robustness_df,
+  "./results/centrality_robustness.csv")
+```
+
+Compute preliminary histograms for these values
+```{r robustness preliminary histograms}
+# capitals
+hist(as.matrix(st_drop_geometry(capitals_robustness_df[,str_detect(names(capitals_robustness_df),"bet")])),10)
+
+# all cities
+hist(as.matrix(st_drop_geometry(centrality_robustness_df[,                              str_detect(names(centrality_robustness_df),"deg")])),10)
+```
 
 ### Histograms
 We create simple histograms to visualise the centrality quantiles of cities and capital cities
@@ -2664,6 +2837,158 @@ hist(cities_centrality$degree_quantile,
      main = "Histogram of degree quantiles for all cities",
      xlab = "quantile",
      ylab = "number of cities")
+```
+
+Save the histograms as png and svg files (without labels)
+```{r quantile histograms no labels}
+# set export size
+width_mm <- 29
+height_mm <- 38
+width_in <- width_mm * 0.0393701
+height_in <- height_mm * 0.0393701
+
+# save as svg
+for(centrality in c("betweenness","closeness","degree")){
+  # capital cities
+  svg(str_c("./results/",centrality,"_capitals.svg"), 
+      width = width_in, 
+      height = height_in)
+  par(mar = c(1, 1, 0, 0), family = "Arial", ps = 5)
+  hist(capital_centrality[[str_c(centrality,"_quantile")]]
+       [capital_centrality$distance_rank==1],
+     xlim = c(0, max(capital_centrality[[str_c(centrality,"_quantile")]], 
+                     na.rm = TRUE)),
+     main = "",
+     xlab = "",
+     ylab = "")
+  axis(1, at = seq(0,1,by=0.2))
+  dev.off()
+  
+  # all cities
+  svg(str_c("./results/",centrality,"_all_cities.svg"), 
+      width = width_in, 
+      height = height_in)
+  par(mar = c(1, 1, 0, 0), family = "Arial", ps = 5)
+  hist(cities_centrality[[str_c(centrality,"_quantile")]],
+     xlim = c(0, max(cities_centrality[[str_c(centrality,"_quantile")]], 
+                     na.rm = TRUE)),
+     main = "",
+     xlab = "",
+     ylab = "")
+  axis(1, at = seq(0,1,by=0.2))
+  dev.off()
+}
+
+# save as png
+for(centrality in c("betweenness","closeness","degree")){
+  # capital cities
+  png(str_c("./results/",centrality,"_capitals.png"), 
+      width = width_in, 
+      height = height_in,
+      units = "in", 
+      res = 300)
+  par(mar = c(1, 1, 0, 0), family = "Arial", ps = 5)
+  hist(capital_centrality[[str_c(centrality,"_quantile")]]
+       [capital_centrality$distance_rank==1],
+     xlim = c(0, max(capital_centrality[[str_c(centrality,"_quantile")]], 
+                     na.rm = TRUE)),
+     main = "",
+     xlab = "",
+     ylab = "")
+  axis(1, at = seq(0,1,by=0.2))
+  dev.off()
+  
+  # all cities
+  png(str_c("./results/",centrality,"_all_cities.png"), 
+      width = width_in, 
+      height = height_in,
+      units = "in", 
+      res = 300)
+  par(mar = c(1, 1, 0, 0), family = "Arial", ps = 5)
+  hist(cities_centrality[[str_c(centrality,"_quantile")]],
+     xlim = c(0, max(cities_centrality[[str_c(centrality,"_quantile")]], 
+                     na.rm = TRUE)),
+     main = "",
+     xlab = "",
+     ylab = "")
+  axis(1, at = seq(0,1,by=0.2))
+  dev.off()
+}
+```
+
+Similarly, we create simple histograms to visualise the robustness of the findings on centrality quantiles of cities and capital cities
+```{r robustness histograms no labels}
+# set export size
+width_mm <- 29
+height_mm <- 38
+width_in <- width_mm * 0.0393701
+height_in <- height_mm * 0.0393701
+
+# save as svg
+for(centrality in c("bet","har","deg")){
+  # capital cities
+  svg(str_c("./results/robustness_",centrality,"_capitals.svg"), 
+      width = width_in, 
+      height = height_in)
+  par(mar = c(1, 1, 0, 0), family = "Arial", ps = 5)
+  hist(as.matrix(st_drop_geometry(capitals_robustness_df[,str_detect(names(capitals_robustness_df),centrality)])),
+     xlim = c(0,1),
+     main = "",
+     xlab = "",
+     ylab = "",
+     10)
+  axis(1, at = seq(0,1,by=0.2))
+  dev.off()
+  
+  # all cities
+  svg(str_c("./results/robustness_",centrality,"_all_cities.svg"), 
+      width = width_in, 
+      height = height_in)
+  par(mar = c(1, 1, 0, 0), family = "Arial", ps = 5)
+  hist(as.matrix(st_drop_geometry(centrality_robustness_df[,str_detect(names(centrality_robustness_df),centrality)])),
+     xlim = c(0,1),
+     main = "",
+     xlab = "",
+     ylab = "",
+     10)
+  axis(1, at = seq(0,1,by=0.2))
+  dev.off()
+}
+
+# save as png
+for(centrality in c("bet","har","deg")){
+  # capital cities
+  png(str_c("./results/robustness_",centrality,"_capitals.png"), 
+      width = width_in, 
+      height = height_in,
+      units = "in", 
+      res = 300)
+  par(mar = c(1, 1, 0, 0), family = "Arial", ps = 5)
+   hist(as.matrix(st_drop_geometry(capitals_robustness_df[,str_detect(names(capitals_robustness_df),centrality)])),
+     xlim = c(0,1),
+     main = "",
+     xlab = "",
+     ylab = "",
+     10)
+  axis(1, at = seq(0,1,by=0.2))
+  dev.off()
+  
+  # all cities
+  png(str_c("./results/robustness_",centrality,"_all_cities.png"),
+      width = width_in, 
+      height = height_in,
+      units = "in", 
+      res = 300)
+  par(mar = c(1, 1, 0, 0), family = "Arial", ps = 5)
+  hist(as.matrix(st_drop_geometry(centrality_robustness_df[,str_detect(names(centrality_robustness_df),centrality)])),
+     xlim = c(0, 1),
+     main = "",
+     xlab = "",
+     ylab = "",
+     10)
+  axis(1, at = seq(0,1,by=0.2))
+  dev.off()
+}
 ```
 
 ## Save results as geojson

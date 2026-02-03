@@ -14,15 +14,20 @@ CC-BY-SA 4.0, see attached [License.md](./License.md)
 (Updated from GNU General Public License v3.0 via commit 24a9f3b)
 
 ## Data
-1. Dataset of roads
-TO SPECIFY
+1. Datasets of roads
+- `Roman roads`: export from itiner-e provided by the authors
+- `modern roads`: v10 of the ESRI world road network, which can be downloaded from https://www.arcgis.com/home/item.html?id=83535020ce154bd5a498957c159e3a99
 
 2. Geographic units data
 - `Roman provinces`: The shapefile of Roman provinces in 200 CE (peak Roman Empire under the Severan dynasty) is based on 'roman-empire-ce-200-provinces.geojson' published by The Ancient World Mapping Centre and corrected by Adam Pazout in 2023. https://github.com/AWMC/geodata/tree/master/Cultural-Data/political_shading/roman_empire_ce_200_provinces
+- `modern world countries`: boundaries can be downloaded from https://hub.huwise.com/explore/assets/world-administrative-boundaries/export/
 
 3. Dataset of ancient cities
 - `Hanson J. W., An urban geography of the Roman world, 100 BC to AD 300. Oxford: Archaeopress; 2016. http://oxrep.classics.ox.ac.uk/oxrep/docs/Hanson2016/Hanson2016_Cities_OxREP.csv`
 - `Hanson J. W, Ortman S. G., A systematic method for estimating the populations of Greek and Roman settlements. J Roman Archaeol. 2017;30: 301–324.`
+- Provincical capitals assembled by Tom Brughmans
+
+4. Ancient sites from Pleiades available from https://pleiades.stoa.org/downloads
 
 ## Scripts
 ### 1. network-analysis.Rmd

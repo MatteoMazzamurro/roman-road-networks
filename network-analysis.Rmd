@@ -111,9 +111,27 @@ Note, however, that these older versions of the packages may not be available fo
 ```
 
 ### Data
+Data availability:
+* roads: 
+    itiner-e https://itiner-e.org/ 
+* provinces: 
+    file by published by The Ancient World Mapping Centre and corrected by Adam Pazout in 2023.
+    https://github.com/AWMC/geodata/tree/master/Cultural-Data/political_shading/roman_empire_ce_200_province
+* cities: 
+    Dataset of ancient cities by Hanson J. W., An urban geography of the Roman world, 100 BC to AD 300. Oxford: Archaeopress; 2016. 
+    http://oxrep.classics.ox.ac.uk/oxrep/docs/Hanson2016/Hanson2016_Cities_OxREP.csv)
+* provincial capitals: 
+    assembled by Tom Brughmans
+* Pleiades: 
+    2023 export of ancient sites from Pleiades dataset https://pleiades.stoa.org/downloads
+* world map: 
+    https://hub.huwise.com/explore/assets/world-administrative-boundaries/export/
+* modern roads:
+    https://www.arcgis.com/home/item.html?id=83535020ce154bd5a498957c159e3a99
+
 First import the original data
 ```{r load original data}
-# roads
+# roads (export from itiner-e)
 roads_sf <- read_sf("./data/roman_roads/roman_roads.shp")
 
 # provinces
@@ -126,17 +144,24 @@ cities_df <- read.csv("./data/Hanson_size_population.csv")
 # provincial capitals
 provincial_capitals_df <- read.csv("./data/provincial_capitals.csv") 
 
-# Pleiades
+# Pleiades 
 Pleiades_sf <- read_sf("./data/ancient_sites_pleiades/pleiades_sett_vil_st_fort.shp") 
 
 # world map (for visualisation purposes)
 world_sf <- read_sf("./data/world_administrative_boundaries/world_administrative_boundaries.shp")
+```
 
-# read gdb
-## The ESRI world road network can be downloaded from https://www.arcgis.com/home/item.html?id=83535020ce154bd5a498957c159e3a99. 
+Modern road data. Remark: the world_roads_v10 folder on Github needs to be unzipped before running this code
+```{r load modern road data}
+# Due to the large size of the file, the version on Github is compressed.
+# Unzip it. Then  before you run the following code:
+modern_roads_sf <- read_sf("./data/world_roads_v10/v10/roads.gdb")
+
+# Alternative:
+## The original ESRI world road network can be downloaded from https://www.arcgis.com/home/item.html?id=83535020ce154bd5a498957c159e3a99. 
 ## Use 7-zip to unzip the lpk file and place it in the data folder for this project. 
-## Then read the .gdb as an sf. 
-modern_roads_sf <- read_sf("./data/World_Roads/v10/roads.gdb") 
+## Then read the .gdb as an sf by running:
+# modern_roads_sf <- read_sf("./data/World_Roads/v10/roads.gdb")
 ```
 
 Ensure that all the data is in sf format, contains only valid columns, and is in the same coordinate reference system (epsg:4326)

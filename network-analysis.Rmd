@@ -146,7 +146,7 @@ provinces_sf <- read_sf("./data/roman_provinces_simple/roman_provinces.shp") # O
 cities_df <- read.csv("./data/Hanson_size_population.csv")
 
 # provincial capitals
-provincial_capitals_df <- read.csv("./data/provincial_capitals_2.csv") 
+provincial_capitals_df <- read.csv("./data/provincial_capitals.csv") 
 
 # Pleiades 
 Pleiades_sf <- read_sf("./data/ancient_sites_pleiades/pleiades_sett_vil_st_fort.shp") 
@@ -2869,7 +2869,7 @@ hist(cities_centrality$degree_quantile,
 
 # non-capital cities
 non_capital_centrality <- cities_centrality[!
-  cities_centrality$netlogoID %in% na.omit(provincial_capitals_df$netlogoID_Hanson),]
+  cities_centrality$primary_key %in% na.omit(provincial_capitals_df$primary_key),]
 hist(non_capital_centrality$betweenness_quantile,
      main = "Histogram of betweenness quantiles for all cities",
      xlab = "quantile",
@@ -3028,6 +3028,25 @@ for(centrality in c("bet","har","deg")){
      10)
   axis(1, at = seq(0,1,by=0.2))
   dev.off()
+  
+  # non capitals
+  svg(str_c("./results/robustness_",centrality,"_non_capital.svg"), 
+      width = width_in, 
+      height = height_in)
+  par(mar = c(1, 1, 0, 0), family = "Arial", ps = 5)
+  hist(
+    as.matrix(
+      st_drop_geometry(
+        centrality_robustness_df[
+          !centrality_robustness_df$primary_key %in% na.omit(provincial_capitals_df$primary_key),
+          str_detect(names(centrality_robustness_df),centrality)])),
+     xlim = c(0,1),
+     main = "",
+     xlab = "",
+     ylab = "",
+     10)
+  axis(1, at = seq(0,1,by=0.2))
+  dev.off()
 }
 
 # save as png
@@ -3056,6 +3075,27 @@ for(centrality in c("bet","har","deg")){
       res = 300)
   par(mar = c(1, 1, 0, 0), family = "Arial", ps = 5)
   hist(as.matrix(st_drop_geometry(centrality_robustness_df[,str_detect(names(centrality_robustness_df),centrality)])),
+     xlim = c(0, 1),
+     main = "",
+     xlab = "",
+     ylab = "",
+     10)
+  axis(1, at = seq(0,1,by=0.2))
+  dev.off()
+  
+  # non-capitals
+    png(str_c("./results/robustness_",centrality,"_non_capitals.png"),
+      width = width_in, 
+      height = height_in,
+      units = "in", 
+      res = 300)
+  par(mar = c(1, 1, 0, 0), family = "Arial", ps = 5)
+ hist(
+    as.matrix(
+      st_drop_geometry(
+        centrality_robustness_df[
+          !centrality_robustness_df$primary_key %in% na.omit(provincial_capitals_df$primary_key),
+          str_detect(names(centrality_robustness_df),centrality)])),
      xlim = c(0, 1),
      main = "",
      xlab = "",

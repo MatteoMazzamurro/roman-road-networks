@@ -1,47 +1,47 @@
-﻿region,region_alt,capital_city,province_from,lon,lat,pop
-Achaia,Achaia,Corinth,27 BCE,22.879795,37.906321,63700
-Africa Proconsularis,Africa Proconsularis,Carthage,146 BCE,10.327685,36.851318,102170
-Alpes Cottiae,Alpes Cottiae,Segusio (Susa),15 BCE,7.048414,45.138485,563
-Alpes Graiae,Alpes Graiae,Augusta Praetoria (Aosta),15 BCE,7.313234,45.735,5975
-Alpes Maritimae,Alpes Maritimae,Cemenelum (Cimiez),14 BCE,7.275398,43.720661,1989
-Arabia,Arabia,Bostra,106 CE,36.482118,32.518318,10160
-Armenia,Armenia,Artaxata,114 CE,39.885,44.576389,NA
-Asia,Asia,Ephesus,133 BCE,27.341752,37.938309,71587
-Bithynia et Pontus,Bithynia et Pontus,Nicomedia,74 BCE,29.919877,40.760677,59152
-Britannia,Britannia,Londinium,43 CE,-0.086632,51.510879,36851
-Cappadocia,Cappadocia,Caesarea Mazaca,17 CE,35.4875,38.7225,NA
-Cilicia,Cilicia,Tarsus,64 BCE,34.8951,36.9165,NA
-Corsica,Corsica,Alalia (Aléria),,9.5128,42.1036,NA
-Creta,Creta,Gortyn,67 BCE,24.946944,35.06272,24812
-Cyrenaica,Cyrene,Cyrene,,21.854404,32.820182,21527
-Cyprus,Cyprus,Paphos,58 BCE,32.4167,34.7667,NA
-Dacia,Dacia,Sarmizegetusa,106 CE,22.809406,45.509997,4291
-Dalmatia,Dalmatia,Salona,9 CE,16.48323,43.539485,9498
-Aegyptus,Aegyptus,Alexandria,30 BCE,29.903728,31.195024,410535
-Epirus,Epirus,Nicopolis,,20.733611,39.008333,2601
-Galatia,Galatia,Ancyra,25 BCE,32.860416,39.941901,23704
-Gallia Aquitania,Aquitania,Burdigala (Bordeaux),27 BCE,-0.574367,44.839577,16187
-Gallia Belgica,Belgica,Durocortorum (Reims),27 BCE,4.033091,49.256602,9280
-Gallia Lugdunensis,Lugdunensis,Lugdunum (Lyon),27 BCE,4.820576,45.759119,39979
-Gallia Narbonensis,Narbonensis,Narbo Martius,121 BCE,3.004192,43.183566,43289
-Germania Inferior,Germania Inferior,Colonia Agrippina (Cologne),16 BCE,6.959912,50.940664,13426
-Germania Superior,Germania Superior,Mogontiacum (Mainz),16 BCE,8.277769,49.993057,19930
-Hispania Baetica,Baetica,Corduba,19 BCE,-4.78025,37.88376,19404
-Hispania Tarraconensis,Hispania Citerior,Tarraco,19 BCE,1.25763,41.117936,12211
-Italia,Italia,Rome,7 BCE,12.485098,41.892777,923406
-Iudaea,Iudaea,Caesarea Maritima,6 CE,34.892078,32.500908,6779
-Lusitania,Lusitania,Emerita Augusta,19 BCE,-6.338496,38.915571,14841
-Lycia et Pamphylia,Lycia et Pamphylia,Attaleia (Antalya),43 CE,30.7075,36.8874,NA
-Macedonia,Macedonia,Thessalonica,146 BCE,22.94554,40.637747,37159
-Mauretania Caesariensis,Mauretania Caesariensis,Caesarea,40 CE,2.1967,36.6069,NA
-Mauretania Tingitana,Mauretania Tingitana,Tingis,40 CE,-5.810419,35.787168,2206
-Moesia Inferior,Moesia Inferior,Tomi,46 CE,28.638242,44.173096,6171
-Moesia Superior,Moesia Superior,Viminacium,46 CE,21.216122,44.736776,9280
-Noricum,Noricum,Virunum,16 BCE,14.366944,46.69775,7188
-Numidia,Numidia,Cirta,46 BCE,6.612554,36.367897,5264
-Pannonia Inferior,Pannonia Inferior,Aquincum,9 CE,19.050216,47.56473,3937
-Pannonia Superior,Pannonia Superior,Carnuntum,9 CE,16.867891,48.113346,12211
-Raetia,Raetia,Augusta Vindelicorum (Augsburg),15 BCE,10.894765,48.365463,10608
-Sardinia,Sardinia,Caralis (Cagliari),238 BCE,9.1111,39.2278,NA
-Syria,Syria,Antioch,64 BCE,36.169629,36.210172,118288
-Thracia,Thracia,Perinthus,46 CE,27.955,40.971,NA
+﻿region,region_alt,capital_city,city_in_Hanson,primary_key,netlogoID_Hanson,province_from,lon,lat,pop
+Achaia,Achaia,Corinth,Corinthia,26,265,27 BCE,22.879795,37.906321,63700
+Africa Proconsularis,Africa Proconsularis,Carthage,Carthago,172,215,146 BCE,10.327685,36.851318,102170
+Alpes Cottiae,Alpes Cottiae,Segusio (Susa),Segusio,224,701,15 BCE,7.048414,45.138485,563
+Alpes Graiae,Alpes Graiae,Augusta Praetoria (Aosta),Augusta Praetoria,225,123,15 BCE,7.313234,45.735,5975
+Alpes Maritimae,Alpes Maritimae,Cemenelum (Cimiez),Cemelenum,227,228,14 BCE,7.275398,43.720661,1989
+Arabia,Arabia,Bostra,Bostra,231,165,106 CE,36.482118,32.518318,10160
+Armenia,Armenia,Artaxata,NA,,NA,114 CE,39.885,44.576389,NA
+Asia,Asia,Ephesus,Ephesus,276,328,133 BCE,27.341752,37.938309,71587
+Bithynia et Pontus,Bithynia et Pontus,Nicomedia,Nicomedia,379,546,74 BCE,29.919877,40.760677,59152
+Britannia,Britannia,Londinium,Londinium,399,467,43 CE,-0.086632,51.510879,36851
+Cappadocia,Cappadocia,Caesarea Mazaca,NA,NA,NA,17 CE,35.4875,38.7225,NA
+Cilicia,Cilicia,Tarsus,NA,NA,NA,64 BCE,34.8951,36.9165,NA
+Corsica,Corsica,Alalia (Aléria),NA,NA,NA,,9.5128,42.1036,NA
+Creta,Creta,Gortyn,Gortyna,482,377,67 BCE,24.946944,35.06272,24812
+Cyrenaica,Cyrene,Cyrene,Cyrene,481,284,,21.854404,32.820182,21527
+Cyprus,Cyprus,Paphos,NA,NA,NA,58 BCE,32.4167,34.7667,NA
+Dacia,Dacia,Sarmizegetusa,Sarmizegetusa,500,686,106 CE,22.809406,45.509997,4291
+Dalmatia,Dalmatia,Salona,Salona,547,680,9 CE,16.48323,43.539485,9498
+Aegyptus,Aegyptus,Alexandria,Alexandria (Aegyptus),110,34,30 BCE,29.903728,31.195024,410535
+Epirus,Epirus,Nicopolis,Nicopolis (Achaea),65,547,,20.733611,39.008333,2601
+Galatia,Galatia,Ancyra,Ancyra,411,52,25 BCE,32.860416,39.941901,23704
+Gallia Aquitania,Aquitania,Burdigala (Bordeaux),Burdigala,567,175,27 BCE,-0.574367,44.839577,16187
+Gallia Belgica,Belgica,Durocortorum (Reims),Durocortorum,590,309,27 BCE,4.033091,49.256602,9280
+Gallia Lugdunensis,Lugdunensis,Lugdunum (Lyon),Lugdunum,620,475,27 BCE,4.820576,45.759119,39979
+Gallia Narbonensis,Narbonensis,Narbo Martius,Narbo Martius,651,529,121 BCE,3.004192,43.183566,43289
+Germania Inferior,Germania Inferior,Colonia Agrippina (Cologne),Colonia Agrippinensis,660,249,16 BCE,6.959912,50.940664,13426
+Germania Superior,Germania Superior,Mogontiacum (Mainz),Mogontiacum,673,516,16 BCE,8.277769,49.993057,19930
+Hispania Baetica,Baetica,Corduba,Corduba,336,262,19 BCE,-4.78025,37.88376,19404
+Hispania Tarraconensis,Hispania Citerior,Tarraco,Tarraco,731,759,19 BCE,1.25763,41.117936,12211
+Italia,Italia,Rome,Roma,992,658,7 BCE,12.485098,41.892777,923406
+Iudaea,Iudaea,Caesarea Maritima,Caesarea Maritima,1355,184,6 CE,34.892078,32.500908,6779
+Lusitania,Lusitania,Emerita Augusta,Augusta Emerita,1077,122,19 BCE,-6.338496,38.915571,14841
+Lycia et Pamphylia,Lycia et Pamphylia,Attaleia (Antalya),NA,NA,NA,43 CE,30.7075,36.8874,NA
+Macedonia,Macedonia,Thessalonica,Thessalonica,1162,788,146 BCE,22.94554,40.637747,37159
+Mauretania Caesariensis,Mauretania Caesariensis,Caesarea,NA,NA,NA,40 CE,2.1967,36.6069,NA
+Mauretania Tingitana,Mauretania Tingitana,Tingis,Tingis,1202,806,40 CE,-5.810419,35.787168,2206
+Moesia Inferior,Moesia Inferior,Tomi,Tomis,1214,811,46 CE,28.638242,44.173096,6171
+Moesia Superior,Moesia Superior,Viminacium,Viminacium (1),1227,872,46 CE,21.216122,44.736776,9280
+Noricum,Noricum,Virunum,Virunum,1237,877,16 BCE,14.366944,46.69775,7188
+Numidia,Numidia,Cirta,Cirta,1244,239,46 BCE,6.612554,36.367897,5264
+Pannonia Inferior,Pannonia Inferior,Aquincum,Aquincum,1267,87,9 CE,19.050216,47.56473,3937
+Pannonia Superior,Pannonia Superior,Carnuntum,Carnuntum (1),1277,209,9 CE,16.867891,48.113346,12211
+Raetia,Raetia,Augusta Vindelicorum (Augsburg),Augusta Vindelicum,1288,128,15 BCE,10.894765,48.365463,10608
+Sardinia,Sardinia,Caralis (Cagliari),NA,NA,NA,238 BCE,9.1111,39.2278,NA
+Syria,Syria,Antioch,Antiochia (Syria),1324,65,64 BCE,36.169629,36.210172,118288
+Thracia,Thracia,Perinthus,NA,NA,NA,46 CE,27.955,40.971,NA

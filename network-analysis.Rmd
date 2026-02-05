@@ -2579,7 +2579,7 @@ for (gu in geographical_units) {
 ### Correlation between structural properties and cities locations
 Similar to the above, for each province, we associate the cities in Hanson's dataset with the closest node on the network and study their properties.
 First, find the closest node to each city in each network
-```{r closes nodes to cities}
+```{r closest nodes to cities}
 # define geographical units of interest
 geographical_units <- intersect(c(provinces,"Italia"),names(cities_sf_l))
 
@@ -2650,6 +2650,76 @@ for (gu in geographical_units) {
 # add lon lat by r
 cities_centrality <- cities_centrality %>% cbind(data.frame(st_coordinates(cities_centrality)) %>% setNames(c("lon","lat")))
 write.csv(st_drop_geometry(cities_centrality),"results/cities_centrality.csv")
+```
+
+### Correlation between structural properties and cities/capitals locations at the Empire level
+First, we compute the distances between the capital cities and the nodes in the entire network
+```{r capital cities, distance to network}
+# define geographical units of interest
+geographical_units <- intersect(c(provinces,"Italia"),provincial_capitals_sf$region_alt)
+
+# initialise list of distances
+distance_capital_to_Empire_nodes_l <- list()
+
+# for each unit, find distance
+for (gu in geographical_units) {
+  distance_capital_to_Empire_nodes <- c(st_distance(
+    provincial_capitals_sf[provincial_capitals_sf$region_alt == gu,],
+    V(road_networks_l$Empire)$geometry
+    ))
+  # update list with vector of distances
+  distance_capital_to_Empire_nodes_l[[gu]] <- distance_capital_to_Empire_nodes
+}
+```
+
+For each geographical unit, check if top five closest nodes are in the top centrality quartile.
+```{r capital centrality quantile}
+# initialise df
+capital_centrality_Empire <- data.frame(
+  province = rep(geographical_units,each=5),
+  distance_rank = rep(1:5,length(geographical_units)),
+  distance = NA,
+  betweenness_quantile = NA,
+  closeness_quantile = NA,
+  degree_quantile = NA,
+  eigenvector_quantile = NA
+)
+
+# populate the df
+# for each unit, find distance
+for (gu in geographical_units) {
+  # extract df of vertex attributes
+  vertex_attr_Empire_df <- road_networks_l$Empire %>%
+    vertex_attr() %>%
+    as.data.frame()
+  
+  # extract distance for the gu 
+  distance_capital_to_Empire_nodes_gu <-  distance_capital_to_Empire_nodes_l[[gu]]
+  
+  # sort vertex attributes by distance to the gu capital
+  vertex_attr_Empire_df <-
+    vertex_attr_Empire_df[order(distance_capital_to_Empire_nodes_gu),]
+ 
+  # fill df
+  capital_centrality_Empire[capital_centrality_Empire$province == gu, "distance"] <- sort(distance_capital_to_Empire_nodes_gu)[1:5]
+  capital_centrality_Empire[capital_centrality_Empire$province == gu, "betweenness"] <- vertex_attr_Empire_df$betweenness[1:5]
+  capital_centrality_Empire[capital_centrality_Empire$province == gu, "degree"] <- vertex_attr_Empire_df$degree[1:5]
+  capital_centrality_Empire[capital_centrality_Empire$province == gu, "closeness"] <- vertex_attr_Empire_df$closeness[1:5]
+  capital_centrality_Empire[capital_centrality_Empire$province == gu, "eigenvector"] <- vertex_attr_Empire_df$eigenvector[1:5]
+  capital_centrality_Empire[capital_centrality_Empire$province == gu, "betweenness_quantile"] <-
+    ecdf(vertex_attr_Empire_df$betweenness)(vertex_attr_Empire_df$betweenness[1:5])
+  capital_centrality_Empire[capital_centrality_Empire$province == gu, "degree_quantile"] <- 
+    ecdf(vertex_attr_Empire_df$degree)(vertex_attr_Empire_df$degree[1:5])
+  capital_centrality_Empire[capital_centrality_Empire$province == gu, "closeness_quantile"] <-
+    ecdf(vertex_attr_Empire_df$closeness)(vertex_attr_Empire_df$closeness[1:5])
+  capital_centrality_Empire[capital_centrality_Empire$province == gu, "closeness_quantile"] <-
+    ecdf(vertex_attr_Empire_df$closeness)(vertex_attr_Empire_df$closeness[1:5])
+  capital_centrality_Empire[capital_centrality_Empire$province == gu, "eigenvector_quantile"] <-
+    ecdf(vertex_attr_Empire_df$eigenvector)(vertex_attr_Empire_df$eigenvector[1:5])
+}
+
+# export results
+write.csv(capital_centrality_Empire,"results/capital_centrality_Empire.csv")
 ```
 
 ### Correlation between structural properties population in Hanson.

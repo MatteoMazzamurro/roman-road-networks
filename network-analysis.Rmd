@@ -47,7 +47,7 @@ required_packages <- c("tidyverse",
                        "stplanr")
 ```
 
-*tidyverse* and *dplyr* offer a collection of methods for data analysis, that we use for data cleaning and visualisation. We use *sf* to read and handle shapefiles, *spatstat* for point processes and observation windows, *raster* to manage the coordinate projections, and *units* to ensure correct handling of distance units. We use *igraph* and *sfnetworks* to construct our network objects. *ggraph* allows to visualise graph objects based on the ggplot2 framework (ggplot2 is included in tidyverse), and *ggspatial* adds other visual features for maps. *RColorBrewer* and *colorRamps* allow efficient management of colours, and *cowplot* is used to create separate images of legends. *deldir*, *spatgraphs*, and *cccd* are used to create spatial graph models. *DescTools* is used to compute the Gini coefficient of inequality. *stplanr* is used to add a buffer zone aroudn a sf.
+*tidyverse* and *dplyr* offer a collection of methods for data analysis, that we use for data cleaning and visualisation. We use *sf* to read and handle shapefiles, *spatstat* for point processes and observation windows, *raster* to manage the coordinate projections, and *units* to ensure correct handling of distance units. We use *igraph* and *sfnetworks* to construct our network objects. *ggraph* allows to visualise graph objects based on the ggplot2 framework (ggplot2 is included in tidyverse), and *ggspatial* adds other visual features for maps. *RColorBrewer* and *colorRamps* allow efficient management of colours, and *cowplot* is used to create separate images of legends. *deldir*, *spatgraphs*, and *cccd* are used to create spatial graph models. *DescTools* is used to compute the Gini coefficient of inequality. *stplanr* is used to add a buffer zone around a sf.
 
 One needs to install them if they are not installed yet.
 ```{r install packages}
@@ -111,13 +111,14 @@ Note, however, that these older versions of the packages may not be available fo
 # install_version("stplanr", version = "1.2.3")
 # 
 # #load packages
-# invisible(lapply(required_packages_analysis, library, character.only = TRUE))
+# invisible(lapply(required_packages, library, character.only = TRUE))
 ```
 
 ### Data
 Data availability:
 * roads: 
-    itiner-e https://itiner-e.org/ 
+    export from itiner-e provided by the authors:
+    de Soto, P. et al. (2025) A High-Resolution Dataset of Roads of the Roman Empire: Itiner-e static version 2024. Zenodo. https://doi.org/10.5281/zenodo.17122148
 * provinces: 
     file by published by The Ancient World Mapping Centre and corrected by Adam Pazout in 2023.
     https://github.com/AWMC/geodata/tree/master/Cultural-Data/political_shading/roman_empire_ce_200_province
@@ -139,8 +140,7 @@ First import the original data
 roads_sf <- read_sf("./data/roman_roads/roman_roads.shp")
 
 # provinces
-#provinces_sf <- read_sf("./data/roman_provinces/roman_provinces.shp") # Full 3D version (not on GitHub)
-provinces_sf <- read_sf("./data/roman_provinces_simple/roman_provinces.shp") # OLD 3D version
+provinces_sf <- read_sf("./data/roman_provinces_simple/roman_provinces.shp")
 
 # cities
 cities_df <- read.csv("./data/Hanson_size_population.csv")

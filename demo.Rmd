@@ -1,0 +1,289 @@
+---
+title: "Demo"
+author: "Matteo Mazzamurro"
+date: "2026-16-02"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Summary
+This is a demo of the network analysis in the paper on Roman roads.
+It builds the ancient road networks (for the whole Empire and individual provinces), and computes the degree distribution by province.
+
+Expected output: histogram of the degree distribution for a province of choice (default: "Achaia").
+
+## Preliminaries
+### R version and packages
+This document uses R version 4.4.3 (March, 2025).
+
+To compute the total running time, we first run:
+```{r Start computation of run time}
+start_time <- Sys.time()
+```
+
+The code relies on the following packages:
+```{r required packages}
+required_packages_demo <- c(
+  "tidyverse",
+  "sf",
+  "dplyr",
+  "spatstat",
+  "raster",
+  "units",
+  "igraph",
+  "sfnetworks",
+  "RColorBrewer",
+  "colorRamps"
+  )
+```
+
+*tidyverse* and *dplyr* offer a collection of methods for data analysis, that we use for data cleaning and visualisation. We use *sf* to read and handle shapefiles, *spatstat* for point processes and observation windows, *raster* to manage the coordinate projections, and *units* to ensure correct handling of distance units. We use *igraph* and *sfnetworks* to construct our network objects. *RColorBrewer* and *colorRamps* allow efficient management of colours.
+
+One needs to install them if they are not installed yet.
+```{r install packages}
+packages_to_install_demo <- required_packages_demo[!(required_packages_demo %in% installed.packages()[,"Package"])]
+if(length(packages_to_install_demo)) install.packages(packages_to_install_demo)
+```
+
+Finally, one needs to load them.
+```{r load packages}
+invisible(lapply(required_packages_demo, library, character.only = TRUE))
+
+```
+
+Note that we use the following versions of the packages:
+* tidyverse     2.0.0
+* dplyr         1.1.4
+* sf            1.0.13
+* spatstat      3.0.7
+* raster        3.6.26
+* units         0.8.2
+* igraph        1.4.3
+* sfnetworks    0.6.3
+* RColorBrewer  1.1.3
+* colorRamps    2.3.1
+
+If a package has been updated since the release of this code, using the newer version may cause issues.
+If this is the case, one can try to solve them by installing the specific versions of the packages by uncommenting and running the following code. 
+Note, however, that these older versions of the packages may not be available for newer versions of R, in which case it will be necessary to switch to an older version of R to run the code (please refer to the cran.r website on how to do that: https://cran.r-project.org/index.html).
+```{r install specific package versions}
+## install devtools if not already installed
+#if (!"devtools" %in% installed.packages()[,"Package"]) # install.packages("devtools")
+ 
+# # load devtools
+# library(devtools)
+
+## install specific versions of the packages
+# install_version("tidyverse", version = "2.0.0")
+# install_version("dplyr", version = "1.1.4")
+# install_version("sf", version = "1.0.13")
+# install_version("spatstat", version = "3.0.7")
+# install_version("raster", version = "3.6.26")
+# install_version("units", version = "0.8.2")
+# install_version("igraph", version = "1.4.3")
+# install_version("sfnetworks", version = "0.6.3")
+# install_version("RColorBrewer", version = "1.1.3")
+# install_version("colorRamps", version = "2.3.1")
+
+## load packages
+# invisible(lapply(required_packages_demo, library, character.only = TRUE))
+```
+
+### Data
+#### Data availability
+* roads: 
+    export from itiner-e provided by the authors:
+    de Soto, P. et al. (2025) A High-Resolution Dataset of Roads of the Roman Empire: Itiner-e static version 2024. Zenodo. https://doi.org/10.5281/zenodo.17122148
+* provinces: 
+    file by published by The Ancient World Mapping Centre and corrected by Adam Pazout in 2023.
+    https://github.com/AWMC/geodata/tree/master/Cultural-Data/political_shading/roman_empire_ce_200_province
+
+#### Data import
+First import the original data
+```{r load original data}
+# roads (export from itiner-e)
+roads_sf <- read_sf("./demo_data/roman_roads/roman_roads.shp")
+
+# provinces
+provinces_sf <- read_sf("./demo_data/roman_provinces_simple/roman_provinces.shp")
+```
+
+#### Data preprocessing
+Ensure that all the data is in sf format, contains only valid columns, and is in the same coordinate reference system (epsg:4326)
+```{r harmonise data type, columns, and crs}
+# roads
+roads_sf$LENGTH_GEO <- ifelse(roads_sf$LENGTH_GEO>0, roads_sf$LENGTH_GEO, roads_sf$lengthGeo)
+roads_sf <- roads_sf %>% 
+  dplyr::select(-Shape_Leng,-lengthGeo) %>%
+  st_transform(crs=crs("epsg:4326")) %>%
+  st_zm(drop = TRUE)
+
+# provinces
+provinces_sf <- provinces_sf %>%
+  dplyr::select(province, Shape_Area, geometry) %>%
+  st_transform(crs=crs("epsg:4326")) %>%
+  st_zm(drop = TRUE) 
+```
+
+Now, classify the roads and sites by provinces and create lists of shapefiles for the empire and individual provinces
+```{r roads, cities, and sites by provinces}
+# extract names of geographical units
+provinces <- provinces_sf$province
+geographical_units_demo <-  c("Empire",provinces, "Italia")
+
+# define "Italia" as a special study region
+Italia_provinces <- provinces[str_detect(provinces,"Regio")]
+Italia_sf <- provinces_sf %>%
+  filter(province %in% Italia_provinces) %>% 
+  st_union()
+
+# data by province
+roads_with_provinces_sf <- st_join(roads_sf, provinces_sf, join = st_intersects)
+
+# function to define named lists of shapefiles
+by_province_l_f <- function(df){
+  if ("province" %in% names(df)){
+    df_by_province_l <- df %>%
+      filter(!is.na(province)) %>%
+      group_split(province) %>%
+      setNames(provinces[provinces %in% df$province])
+    return(df_by_province_l)
+  } else {
+    stop("The dataframe does not contain information on provinces")
+  }
+} 
+
+# define list of province shapefiles
+roads_sf_provinces_l <- by_province_l_f(roads_with_provinces_sf)
+
+# shapefiles for Italia
+roads_sf_Italia <- roads_sf %>%
+  filter(st_intersects(., Italia_sf, sparse = FALSE))
+
+# initialise lists of shapefiles
+roads_sf_demo_l <- list()
+
+# populate lists
+roads_sf_demo_l <- roads_sf_demo_l %>%
+  append(list(Empire = roads_sf)) %>%       # add Empire
+  append(roads_sf_provinces_l) %>%          # add provinces
+  append(list(Italia= roads_sf_Italia))     # add Italia
+```
+
+## Ancient networks construction
+Use the above shapefiels to build road networks by geographical unit
+```{r build roads networks}
+# list of networks by province and in the entire empire
+road_networks_demo_l <- lapply(roads_sf_demo_l,
+                          as_sfnetwork,
+                          directed = FALSE)
+
+# assign time to traverse a road as as weight
+road_networks_demo_l <- lapply(road_networks_demo_l, function(g){
+  # extract info
+  length <- E(g)$LENGTH_GEO              # in meters
+  slope <- E(g)$Avg_Slope/100            
+  pace <- 3/5*exp(7/2*(abs(slope+0.05))) # Tobler's formula in seconds per meter
+  weight = length*pace                   # in seconds
+  
+  # assign
+  E(g)$weight <- weight
+  return(g)
+})
+```
+
+## Degree distribution 
+First, compute the degree sequence and degree distribution
+```{r degree centrality}
+# compute the degree and assign as vertex attribute
+road_networks_degree_l <- lapply(road_networks_demo_l,degree)
+
+# add degree as vertex attribute
+road_networks_demo_l <- lapply(road_networks_demo_l, function(g) {
+  V(g)$degree <- degree(g)
+  return(g)}
+  )
+
+# define list of dfs of degree distribution
+road_networks_degree_distribution_df_demo_l <- lapply(
+  road_networks_demo_l,
+  function(g) {
+    return(data.frame(
+      degree = 0:max(V(g)$degree),
+      fraction = degree_distribution(g)))
+    }
+  )
+```
+
+We use ggplot to create a barplot of the degree distribution
+```{r barplot of degree distribution}
+# function to create a barplot of the degree distribution (print or save)
+degree_distribution_barplot_demo_f <- function(gu, 
+                                          print = FALSE, 
+                                          save = FALSE){
+  # define data
+  data <- road_networks_degree_distribution_df_demo_l[[gu]]
+  
+  # define a plot title
+  plot_title <- paste0("Degree distribution, ",gu)
+  
+  # define plot
+  degree_distribution_barplot_gu <- ggplot(
+    data = data, 
+    aes(degree,fraction)) +
+    theme_minimal() +
+        theme(panel.grid.major.x = element_blank(),
+              panel.grid.minor.x = element_blank()) +
+    # add the bar plot
+    geom_bar(stat = "identity", fill = "skyblue") +
+    #add labels 
+    labs(
+      title = plot_title,
+      x = "Degree",
+      y = "Fraction of nodes") +
+    scale_x_continuous(
+      breaks = seq(min(data$degree), 
+                   max(data$degree), 
+                   by = 1))
+  
+  # define secondary outcomes
+  if (print){
+    print(degree_distribution_barplot_gu)
+  }
+  if (save){
+    plot_name <- str_replace_all(paste0("degree distribution ",gu)," ","_")
+    plot_path <- paste0("./demo_output/",plot_name,".pdf")
+    ggsave(plot_path, degree_distribution_barplot_gu, width = 7, height = 5.5)
+  }
+  
+  # return plot for future use
+  # return(degree_distribution_barplot_gu)
+}
+```
+
+Output: plot histogram of the degree distribution of a province or entire Empire 
+The default option is "Achaia", which is included in the data_output folder on GitHub.
+```{r plot degree distribution for Achaia}
+# apply function
+degree_distribution_barplot_demo_f("Achaia", print = TRUE, save = FALSE)
+```
+
+Bonus: to generate and save histograms for all provinces uncomment and run the following code
+```{r save plots of degree distributions for all provinces}
+## apply function (change print and/or save to TRUE)
+#  degree_distribution_barplot_demo_l <- lapply(
+#  geographical_units_demo, 
+#  degree_distribution_barplot_demo_f, 
+#  print = FALSE, 
+#  save = TRUE)
+```
+
+## Total runtime
+```{r compute runtime}
+end_time <- Sys.time()
+total_time <- end_time-start_time
+print(total_time)
+```

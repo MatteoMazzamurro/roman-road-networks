@@ -25,6 +25,8 @@ It is divided into the following sections:
 ## Preliminaries
 ### R version and packages
 This document uses R version 4.3.0 (2023-04-21 ucrt). 
+The set-up took less than 5 minutes on a Dell Pro 14 Plus (Intel(R) Core(TM) Ultra 7 155H, 3800 Mhz, 16 Cores, 22 Logical Processors, 16GB RAM)
+
 It relies on the following packages:
 ```{r required packages}
 required_packages <- c("tidyverse",
@@ -334,13 +336,13 @@ road_networks_l <- lapply(roads_sf_l,
                           as_sfnetwork,
                           directed = FALSE)
 
-# assign time to transverse a road as as weight
+# assign time to traverse a road as as weight
 road_networks_l <- lapply(road_networks_l, function(g){
   # extract info
-  length <- E(g)$LENGTH_GEO
-  slope <- E(g)$Avg_Slope/100
-  pace <- 3/5*exp(7/2*(abs(slope+0.05))) #Tobler's formula
-  weight = length*pace
+  length <- E(g)$LENGTH_GEO              # in meters
+  slope <- E(g)$Avg_Slope/100            
+  pace <- 3/5*exp(7/2*(abs(slope+0.05))) # Tobler's formula in seconds per meter
+  weight = length*pace                   # in seconds 
   
   # assign
   E(g)$weight <- weight
@@ -585,7 +587,7 @@ degree_distribution_barplot_f <- function(gu,
   
   # define secondary outcomes
   if (print){
-    print(degree_distribution_barplot)
+    print(degree_distribution_barplot_gu)
   }
   if (save){
     plot_name <- str_replace_all(paste0("degree distribution ",gu)," ","_")

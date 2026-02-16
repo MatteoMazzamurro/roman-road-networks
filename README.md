@@ -5,9 +5,16 @@
 
 ## Authors
 
-* Matteo Mazzamurro [![](https://orcid.org/sites/default/files/images/orcid_16x16.png)](https://orcid.org/0009-0004-4454-1551), PSNP, Aarhus University
+* Matteo Mazzamurro [![](https://orcid.org/sites/default/files/images/orcid_16x16.png)](https://orcid.org/0009-0004-4454-1551), PSNP, Aarhus University, and Queen Mary University of London
 * Tom Brughmans [![](https://orcid.org/sites/default/files/images/orcid_16x16.png)](https://orcid.org/0000-0002-1589-7768), PSNP, Aarhus University
-* Adam Pažout, Pau de Soto, María Coto-Sarmiento, Clara Filet, Eduardo Herrera Malatesta, Magnus Nielsen, Gustav Emil Ølgaard, Peter Vahlstrup
+* Adam Pažout, [![](https://orcid.org/sites/default/files/images/orcid_16x16.png)](https://orcid.org/0000-0001-7745-5634), Universitat Autònoma de Barcelona
+* Pau de Soto, [![](https://orcid.org/sites/default/files/images/orcid_16x16.png)](https://orcid.org/0000-0002-7068-786X), Universitat Autònoma de Barcelona
+* María Coto-Sarmiento, [![](https://orcid.org/sites/default/files/images/orcid_16x16.png)](https://orcid.org/0000-0001-9770-6162), Consejo Superior de Investigaciones Científicas: Barcelona
+* Clara Filet, [![](https://orcid.org/sites/default/files/images/orcid_16x16.png)](https://orcid.org/0000-0002-5077-5213), Université Bordeaux Montaigne
+* Eduardo Herrera Malatesta, [![](https://orcid.org/sites/default/files/images/orcid_16x16.png)](https://orcid.org/0000-0001-5265-6296), Universiteit Leiden
+* Magnus Nielsen, [![](https://orcid.org/sites/default/files/images/orcid_16x16.png)](https://orcid.org/0000-0002-2024-5748)
+* Gustav Emil Ølgaard,
+* Peter Vahlstrup
 
 ## License
 CC-BY-SA 4.0, see attached [License.md](./License.md)
@@ -108,11 +115,16 @@ Processor: Intel(R) Core(TM) Ultra 7 155H, 3800 Mhz, 16 Cores, 22 Logical Proces
 RAM: 16 GB 
 OS: Microsoft Windows 11 Enterprise
 
-
-## Demo TO DO
-Run network-analysis-demo.Rmd in R. Ensure data is accessible in folder ("./data").
+## Demo
+Run demo.Rmd in R. Ensure data is accessible in folder ("./demo_data").
+The demo includes:
+* The construction of ancient road networks (for the whole Empire and individual provinces).
+* The computation of the degree distribution by province
+Expected output: histogram of the degree distribution for a province of choice (default: "Achaia", visible in the demo_output folder)
+For a preview, see the knitted file demo.html
+Expected runtime: 25 seconds
 
 ## Instruction for use
-Run network-analysis.Rmd in R. Ensure data is accessible in folder ("./data").
-
-
+Run network-analysis.Rmd in R. 
+Ensure all data is accessible in folder ("./data"). 
+Remark: the world_roads_v10 data folder on Github is compressed because of its size, and needs to be unzipped before running this code.

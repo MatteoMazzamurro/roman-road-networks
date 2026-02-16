@@ -7,13 +7,13 @@
 
 * Matteo Mazzamurro [![](https://orcid.org/sites/default/files/images/orcid_16x16.png)](https://orcid.org/0009-0004-4454-1551), PSNP, Aarhus University, and Queen Mary University of London
 * Tom Brughmans [![](https://orcid.org/sites/default/files/images/orcid_16x16.png)](https://orcid.org/0000-0002-1589-7768), PSNP, Aarhus University
-* Adam Pažout, [![](https://orcid.org/sites/default/files/images/orcid_16x16.png)](https://orcid.org/0000-0001-7745-5634), Universitat Autònoma de Barcelona
-* Pau de Soto, [![](https://orcid.org/sites/default/files/images/orcid_16x16.png)](https://orcid.org/0000-0002-7068-786X), Universitat Autònoma de Barcelona
-* María Coto-Sarmiento, [![](https://orcid.org/sites/default/files/images/orcid_16x16.png)](https://orcid.org/0000-0001-9770-6162), Consejo Superior de Investigaciones Científicas: Barcelona
-* Clara Filet, [![](https://orcid.org/sites/default/files/images/orcid_16x16.png)](https://orcid.org/0000-0002-5077-5213), Université Bordeaux Montaigne
-* Eduardo Herrera Malatesta, [![](https://orcid.org/sites/default/files/images/orcid_16x16.png)](https://orcid.org/0000-0001-5265-6296), Universiteit Leiden
-* Magnus Nielsen, [![](https://orcid.org/sites/default/files/images/orcid_16x16.png)](https://orcid.org/0000-0002-2024-5748)
-* Gustav Emil Ølgaard,
+* Adam Pažout [![](https://orcid.org/sites/default/files/images/orcid_16x16.png)](https://orcid.org/0000-0001-7745-5634), Universitat Autònoma de Barcelona
+* Pau de Soto [![](https://orcid.org/sites/default/files/images/orcid_16x16.png)](https://orcid.org/0000-0002-7068-786X), Universitat Autònoma de Barcelona
+* María Coto-Sarmiento [![](https://orcid.org/sites/default/files/images/orcid_16x16.png)](https://orcid.org/0000-0001-9770-6162), Consejo Superior de Investigaciones Científicas: Barcelona
+* Clara Filet [![](https://orcid.org/sites/default/files/images/orcid_16x16.png)](https://orcid.org/0000-0002-5077-5213), Université Bordeaux Montaigne
+* Eduardo Herrera Malatesta [![](https://orcid.org/sites/default/files/images/orcid_16x16.png)](https://orcid.org/0000-0001-5265-6296), Universiteit Leiden
+* Magnus Nielsen [![](https://orcid.org/sites/default/files/images/orcid_16x16.png)](https://orcid.org/0000-0002-2024-5748)
+* Gustav Emil Ølgaard
 * Peter Vahlstrup
 
 ## License

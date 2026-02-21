@@ -1936,9 +1936,6 @@ median_edge_betweenness_road_type_df <- median_edge_betweenness_road_type_l %>%
 The following function from the Online Companion allow to check the sensitivity of node centrality measures when edges are included with a given probability
 ```{r sensitivity of node centrality probabilistic network}
 # Define function for assessing and retaining edges based on edge weight probabilities
-
-
-
 edge_prob <- function(net, nsim = 1000, probs) {
   net_list <- list()
   for (i in 1:nsim) {

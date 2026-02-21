@@ -625,26 +625,33 @@ road_networks_l <- lapply(road_networks_l, function(g) {
 #### Betweenness
 First, compute node betweennenss
 ```{r node betweenness centrality}
-# compute node betweenness centrality 
-road_networks_betweenness_l <- lapply(road_networks_l, betweenness)
-
 # add betweenness as vertex attribute
-road_networks_l <- lapply(road_networks_l, function(g) {
-  V(g)$betweenness <- betweenness(g)
-  return(g)}
-  )
+road_networks_l <-
+  lapply(road_networks_l,
+         function(g) {
+           V(g)$betweenness <-
+             betweenness(g)
+           return(g)}
+         )
+
+# save node betweenness as list 
+road_networks_betweenness_l <-
+  lapply(road_networks_l, 
+         function(g) V(g)$betweenness)
 ```
 
 Then, compute edge betweenness
 ```{r edge betweenness centrality}
-# compute edge betweenness centrality 
-road_networks_edge_betweenness_l <- lapply(road_networks_l, edge_betweenness)
-
 # add betweenness as an edge attribute
 road_networks_l <- lapply(road_networks_l, function(g) {
   E(g)$edge_betweenness <- edge_betweenness(g)
   return(g)}
   )
+
+# save edge betweenness as list 
+road_networks_edge_betweenness_l <- lapply(
+  road_networks_l, 
+  function(g) E(g)$edge_betweenness)
 ```
 
 #### Eigenvector
@@ -797,12 +804,12 @@ for (province in provinces){
   
     #save plot
     ggsave(
-      paste0("figures/edge_betweenenss_",province,"_plot.pdf"), 
+      paste0("figures/edge_betweenness_",province,"_plot.pdf"), 
       edge_betweenness_plot, 
       width = 7, 
       height = 7)
     ggsave(
-      paste0("figures/edge_betweenenss_",province,"_plot.jpeg"), 
+      paste0("figures/edge_betweenness_",province,"_plot.jpeg"), 
       edge_betweenness_plot, 
       width = 7, 
       height = 7, 
@@ -861,12 +868,12 @@ for (gu in c("Empire","Italia")){
   
     #save plot
     ggsave(
-      paste0("figures/edge_betweenenss_",gu,"_plot.pdf"), 
+      paste0("figures/edge_betweenness_",gu,"_plot.pdf"), 
       edge_betweenness_plot, 
       width = 14, 
       height = 14)
     ggsave(
-      paste0("figures/edge_betweenenss_",gu,"_plot.jpeg"), 
+      paste0("figures/edge_betweenness_",gu,"_plot.jpeg"), 
       edge_betweenness_plot, 
       width = 14, 
       height = 14, 
@@ -983,7 +990,7 @@ Define a Gabriel graph from the spatial point process
 # define Gabriel graph model
 gg2 <- spatgraph(Pleiades_ppp, type="gabriel")
 
-# extract the (projected) coordinates of the point pattern (note: s
+# extract the (projected) coordinates of the point pattern
 Pleiades_lonlat3395_selected_df <- data.frame(lon=Pleiades_ppp$x,
                                               lat=Pleiades_ppp$y) 
 # assign an id to each node
@@ -1019,7 +1026,7 @@ Pleiades_Gabriel_df <- Pleiades_Gabriel_df %>%
   left_join(Pleiades_lonlat3395_selected_df,join_by("v_2"=="id")) %>%
   setNames(c("v_1","v_2",
              "lon_1","lat_1","lon_2","lat_2",
-             "lon3359_1","lat3359_1","lon3359_2","lat3359_2"))
+             "lon3395_1","lat3395_1","lon3395_2","lat3395_2"))
 ```
 
 Create a quick plot of a Gabriel graph
@@ -1079,27 +1086,29 @@ Pleiades_Gabriel_points_on_edges_long <- matrix(
   ncol = 4)
 
 # extract the projected coordinates of the endpoints of the edges and save them as a dataframe
-Pleiades_Gabriel_3359<- as.matrix(Pleiades_Gabriel_df[,c("v_1","v_2","lon3359_1","lat3359_1","lon3359_2","lat3359_2")])
+Pleiades_Gabriel_3395<- as.matrix(Pleiades_Gabriel_df[,c("v_1","v_2","lon3395_1","lat3395_1","lon3395_2","lat3395_2")])
 
 # for each edge, create 10 points and add them to the matrix
 for (i in 1:Pleiades_Gabriel_n_edges) {
   for (j in 0:(np-1)) {
-    Pleiades_Gabriel_points_on_edges_long[(i-1)*np+j+1,1:2] <- Pleiades_Gabriel_3359[i,1:2]
+    Pleiades_Gabriel_points_on_edges_long[(i-1)*np+j+1,1:2] <- Pleiades_Gabriel_3395[i,1:2]
     Pleiades_Gabriel_points_on_edges_long[(i-1)*np+j+1,3:4]<-
-      (np-1-j)/(np-1)*Pleiades_Gabriel_3359[i,3:4] + 
-      j/(np-1)*Pleiades_Gabriel_3359[i,5:6]
+      (np-1-j)/(np-1)*Pleiades_Gabriel_3395[i,3:4] + 
+      j/(np-1)*Pleiades_Gabriel_3395[i,5:6]
   }
   if (i%%1000==0) {print(i)}
 }
 
 # transform the result into a dataframe, for legibility
-Pleiades_Gabriel_points_on_edges_long_df <- data.frame(Pleiades_Gabriel_points_on_edges_long) %>% setNames(c("v_1","v_2","lon3359","lat3359"))
+Pleiades_Gabriel_points_on_edges_long_df <-
+  data.frame(Pleiades_Gabriel_points_on_edges_long) %>%
+  setNames(c("v_1","v_2","lon3395","lat3395"))
 
 # for each point, check if it falls into the above defined observation windows
 Pleiades_Gabriel_points_on_edges_long_df$keep <- inside.owin(
-  x= Pleiades_Gabriel_points_on_edges_long_df$lon3359,
-  y=Pleiades_Gabriel_points_on_edges_long_df$lat3359,
-  w=world_owin)
+  x = Pleiades_Gabriel_points_on_edges_long_df$lon3395,
+  y = Pleiades_Gabriel_points_on_edges_long_df$lat3395,
+  w = world_owin)
 
 # specify that an edge should be kept if all points along it fall on land
 Pleiades_Gabriel_df$keep <- FALSE
@@ -1109,7 +1118,7 @@ for (i in 1:Pleiades_Gabriel_n_edges){
 ```
 
 The following figure indicates the valid connections.
-```{r plot valid connections}
+```{r plot valid connections Gabriel}
 # initialise plot
 Gabriel_plot <- ggplot() +
     theme_minimal() + 
@@ -1123,13 +1132,13 @@ Gabriel_plot <- ggplot() +
   geom_segment(data = Pleiades_Gabriel_df[which(Pleiades_Gabriel_df$keep),], 
                aes(x = lon_1, y = lat_1, xend = lon_2, yend = lat_2),
                color = "red",
-               size = 0.2) +
+               linewidth = 0.2) +
   
   # uncomment to visualise in blue the deleted edges
   #geom_segment(data = Pleiades_Gabriel_df[which(!Pleiades_Gabriel_df$keep),], 
                #aes(x = lon_1, y = lat_1, xend = lon_2, yend = lat_2),
                #color = "blue",
-               #size = 0.2) +
+               #linewidth = 0.2) +
 
   # add the annotation scale (if needed)
   annotation_north_arrow(
@@ -1187,7 +1196,7 @@ Pleiades_RNG_df <- Pleiades_RNG_df %>%
   left_join(Pleiades_lonlat3395_selected_df,join_by("v_2"=="id")) %>%
   setNames(c("v_1","v_2",
              "lon_1","lat_1","lon_2","lat_2",
-             "lon3359_1","lat3359_1","lon3359_2","lat3359_2"))
+             "lon3395_1","lat3395_1","lon3395_2","lat3395_2"))
 ```
 
 We plot the resulting network.
@@ -1205,7 +1214,7 @@ RNG_plot <- ggplot() +
   geom_segment(data = Pleiades_RNG_df, 
                aes(x = lon_1, y = lat_1, xend = lon_2, yend = lat_2),
                color = "red",
-               size = 0.2) +
+               linewidth = 0.2) +
 
   # add the annotation scale (if needed)
   annotation_north_arrow(
@@ -1271,7 +1280,7 @@ for (i in 1:Pleiades_RNG_n_edges){
 ```
 
 The following figure indicates the valid connections.
-```{r plot valid connections}
+```{r plot valid connections relative neighbourhood}
 # initialise plot
 RNG_plot <- ggplot() +
     theme_minimal() + 
@@ -1285,20 +1294,20 @@ RNG_plot <- ggplot() +
   geom_segment(data = Pleiades_RNG_df[which(Pleiades_RNG_df$keep),], 
                aes(x = lon_1, y = lat_1, xend = lon_2, yend = lat_2),
                color = "red",
-               size = 0.2) +
+               linewidth = 0.2) +
   
  # add Pleiades
  # geom_point(data = Pleiades_lonlat_df, 
  #            aes(x = lon, y = lat),
  #            color = "blue",
- #            size = 0.4) +
+ #            linewidth = 0.4) +
   
   
   # uncomment to visualise in blue the deleted edges
   #geom_segment(data = Pleiades_RNG_df[which(!Pleiades_RNG_df$keep),], 
                #aes(x = lon_1, y = lat_1, xend = lon_2, yend = lat_2),
                #color = "blue",
-               #size = 0.2) +
+               #linewidth = 0.2) +
 
   # add the annotation scale (if needed)
   annotation_north_arrow(
@@ -1365,7 +1374,7 @@ DT_plot <- ggplot() +
   geom_segment(data = Pleiades_DT_df, 
                aes(x = lon_1, y = lat_1, xend = lon_2, yend = lat_2),
                color = "red",
-               size = 0.2) +
+               linewidth = 0.2) +
 
   # add the annotation scale (if needed)
   annotation_north_arrow(
@@ -1432,7 +1441,7 @@ for (i in 1:Pleiades_DT_n_edges){
 ```
 
 The following figure indicates the valid connections.
-```{r plot valid connections}
+```{r plot valid connections Delaunay Triangulation}
 # initialise plot
 DT_plot <- ggplot() +
     theme_minimal() + 
@@ -1446,20 +1455,20 @@ DT_plot <- ggplot() +
   geom_segment(data = Pleiades_DT_df[which(Pleiades_DT_df$keep),], 
                aes(x = lon_1, y = lat_1, xend = lon_2, yend = lat_2),
                color = "red",
-               size = 0.2) +
+               linewidth = 0.2) +
   
  # add Pleiades
  #  geom_point(data = Pleiades_lonlat_df, 
  #             aes(x = lon, y = lat),
  #             color = "blue",
- #             size = 0.4) +
+ #             linewidth = 0.4) +
   
   
   # uncomment to visualise in blue the deleted edges
   #geom_segment(data = Pleiades_DT_df[which(!Pleiades_DT_df$keep),], 
   #             aes(x = lon_1, y = lat_1, xend = lon_2, yend = lat_2),
   #             color = "blue",
-  #             size = 0.2) +
+  #             linewidth = 0.2) +
 
   # add the annotation scale (if needed)
   annotation_north_arrow(
@@ -1497,10 +1506,13 @@ Pleiades_DT_clean <- graph_from_data_frame(Pleiades_DT_df_clean,directed = FALSE
 We now find a minimum spanning forest
 ```{r Spanning forest}
 # associate length to edges in DT
-DT_edge_length <- st_distance(
-  Pleiades_lonlat_df[Pleiades_sf$id %in% Pleiades_DT_df_clean$v_1,],
-  Pleiades_sf[Pleiades_sf$id %in% Pleiades_DT_df_clean$v_2,])
-E(Pleiades_DT_clean)$length <- 
+E(Pleiades_DT_clean)$length <- as.numeric(
+  st_distance(
+    Pleiades_lonlat_selected_sf[Pleiades_DT_df_clean$v_1, ],
+    Pleiades_lonlat_selected_sf[Pleiades_DT_df_clean$v_2, ],
+    by_element = TRUE
+  )
+)
 
 # Compute MST for each component
 DT_components <- decompose(Pleiades_DT_clean)  # Decompose into connected components
@@ -1515,7 +1527,7 @@ for (i in seq(length(msf))) {
   comp_edge_coord <- comp %>%
     edge_attr() %>%
     as.data.frame() %>%
-    select(lon_1,lat_1,lon_2,lat_2)
+    dplyr::select(lon_1,lat_1,lon_2,lat_2)
   msf_df <- rbind(msf_df,comp_edge_coord)
 }
   
@@ -1532,7 +1544,7 @@ MSF_plot <- ggplot() +
   geom_segment(data = msf_df, 
                aes(x = lon_1, y = lat_1, xend = lon_2, yend = lat_2),
                color = "red",
-               size = 0.2) +
+               linewidth = 0.2) +
 
   # add the annotation scale (if needed)
   annotation_north_arrow(
@@ -1554,8 +1566,8 @@ MSF_plot <- ggplot() +
   print(MSF_plot)
   
 #save plot
-#ggsave("figures/DT_network.pdf", RNG_plot, width = 7, height = 5.5)
-#ggsave("figures/DT_network.jpeg", RNG_plot, width = 7, height = 5.5, dpi = 300)
+#ggsave("figures/MSF_network.pdf", MSF_plot, width = 7, height = 5.5)
+#ggsave("figures/MSF_network.jpeg", MSF_plot, width = 7, height = 5.5, dpi = 300)
 ```
 Results are clearly not realistic
 
@@ -1923,8 +1935,10 @@ median_edge_betweenness_road_type_df <- median_edge_betweenness_road_type_l %>%
 ### Robustness of results
 The following function from the Online Companion allow to check the sensitivity of node centrality measures when edges are included with a given probability
 ```{r sensitivity of node centrality probabilistic network}
-# Define function for assessing and retaining edges based on edge
-# weight probabilities
+# Define function for assessing and retaining edges based on edge weight probabilities
+
+
+
 edge_prob <- function(net, nsim = 1000, probs) {
   net_list <- list()
   for (i in 1:nsim) {
@@ -2051,6 +2065,7 @@ empire_network_vertex_attr <- vertex_attr(empire_network)
 
 # define probability for edges using uncertainty on their existence
 edge_prob_df<-ifelse(empire_network_edge_attr$Segment_s=="Certain",1,0.8)
+set.seed(123)
 empire_edge_prob <- edge_prob(empire_network,
                               nsim=100,
                               prob=edge_prob_df)
@@ -2275,7 +2290,8 @@ empire_network_vertex_attr <- vertex_attr(empire_network)
 edge_prob_df<-ifelse(empire_network_edge_attr$Segment_s=="Certain",1,0.8)
 
 # define edge probability and subsets
-empire_edge_prob_and_subset<-edge_prob_and_subset(empire_network,
+set.seed(123)
+empire_edge_prob_and_subset <- edge_prob_and_subset(empire_network,
                         nsim=100,
                         prob=edge_prob_df)
 ```
@@ -2529,12 +2545,22 @@ for (gu in geographical_units) {
 
 Select only nearest node and add coordinates and export results
 ```{r export cities with centrality and coordinates}
+# select closest cities
 provincial_capitals_with_centrality_sf <- provincial_capitals_sf %>%
-  left_join(capital_centrality[capital_centrality$distance_rank==1,],
-            join_by(region == province)) %>%
-  cbind(data.frame(st_coordinates(provincial_capitals_with_centrality_sf)) %>% setNames(c("lon","lat")))
-st_write(provincial_capitals_with_centrality_sf, "results/provincial_capitals_with_centrality.shp")
-write.csv(st_drop_geometry(provincial_capitals_with_centrality_sf),"results/provincial_capitals_with_centrality.csv")
+  left_join(capital_centrality[capital_centrality$distance_rank == 1, ],
+            join_by(region == province))
+
+# extract coordinates
+coords <- data.frame(st_coordinates(provincial_capitals_with_centrality_sf)) %>%
+  setNames(c("lon", "lat"))
+
+# attach coordinates explicitly
+provincial_capitals_with_centrality_sf <- cbind(
+  provincial_capitals_with_centrality_sf, coords)
+
+# write results
+#st_write(provincial_capitals_with_centrality_sf, "results/provincial_capitals_with_centrality.shp")
+#write.csv(st_drop_geometry(provincial_capitals_with_centrality_sf),"results/provincial_capitals_with_centrality.csv")
 ```
 
 For each geographical unit, check correlation between centrality and distance from capital

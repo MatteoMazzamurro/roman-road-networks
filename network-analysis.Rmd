@@ -160,7 +160,7 @@ world_sf <- read_sf("./data/world_administrative_boundaries/world_administrative
 Modern road data. Remark: the world_roads_v10 folder on Github needs to be unzipped before running this code
 ```{r load modern road data}
 # Due to the large size of the file, the version on Github is compressed.
-# Unzip it. Then  before you run the following code:
+# Unzip it. Then run the following code:
 modern_roads_sf <- read_sf("./data/world_roads_v10/v10/roads.gdb")
 
 # Alternative:
@@ -1862,11 +1862,17 @@ boxplot_betweenness_by_province_and_road_type <- ggplot(
 
 Boxplot without Italian regios
 ```{r boxplots with no Italian regios}
+# exclude italian regions
+edge_betweenness_road_type_provinces_no_Italy_region_df <- edge_betweenness_road_type_provinces_df[
+      !str_detect(edge_betweenness_road_type_provinces_df$region,"Regio"),
+    ]
+edge_betweenness_road_type_provinces_no_Italy_region_df <- edge_betweenness_road_type_provinces_no_Italy_region_df[
+      !edge_betweenness_road_type_provinces_no_Italy_region_df$region=="Roma",
+    ]
+
 # Boxplot
 boxplot_betweenness_by_province_and_road_type <- ggplot(
-    edge_betweenness_road_type_provinces_df[
-      !str_detect(edge_betweenness_road_type_provinces_df$region,"Regio"),
-    ],
+    edge_betweenness_road_type_provinces_no_Italy_region_df,
     aes(
       x = reorder(region, median_value), 
       y = edge_betweenness, 
@@ -1887,14 +1893,12 @@ boxplot_betweenness_by_province_and_road_type <- ggplot(
   ) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
-ggsave("./results/boxplot_edge_betweenness.svg", boxplot_betweenness_by_province_and_road_type, width = 89, height = 38, units = "mm")
-ggsave("./results/boxplot_edge_betweenness.jpeg", boxplot_betweenness_by_province_and_road_type, width = 89, height = 38, units = "mm", dpi = 300)
+#ggsave("./results/boxplot_edge_betweenness.svg", boxplot_betweenness_by_province_and_road_type, width = 89, height = 38, units = "mm")
+#ggsave("./results/boxplot_edge_betweenness.jpeg", boxplot_betweenness_by_province_and_road_type, width = 89, height = 38, units = "mm", dpi = 300)
 
 # save without axes and titles
 boxplot_betweenness_by_province_and_road_type <- ggplot(
-    edge_betweenness_road_type_provinces_df[
-      !str_detect(edge_betweenness_road_type_provinces_df$region,"Regio"),
-    ],
+   edge_betweenness_road_type_provinces_no_Italy_region_df,
     aes(
       x = reorder(region, median_value), 
       y = edge_betweenness, 
@@ -1915,8 +1919,8 @@ boxplot_betweenness_by_province_and_road_type <- ggplot(
   ) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
-ggsave("./results/boxplot_edge_betweenness_no_axes.svg", boxplot_betweenness_by_province_and_road_type, width = 89, height = 38, units = "mm")
-ggsave("./results/boxplot_edge_betweenness_no_axes.jpeg", boxplot_betweenness_by_province_and_road_type, width = 89, height = 38, units = "mm", dpi = 300)
+#ggsave("./results/boxplot_edge_betweenness_no_axes.svg", boxplot_betweenness_by_province_and_road_type, width = 89, height = 38, units = "mm")
+#ggsave("./results/boxplot_edge_betweenness_no_axes.jpeg", boxplot_betweenness_by_province_and_road_type, width = 89, height = 38, units = "mm", dpi = 300)
 ```
 
 Analysis of the median
@@ -1930,6 +1934,246 @@ median_edge_betweenness_road_type_l <- lapply(road_networks_l, function(net){
   ) 
 median_edge_betweenness_road_type_df <- median_edge_betweenness_road_type_l %>%
   imap_dfr(~ .x %>% mutate("region" = .y))
+```
+
+Compute the probability that a randomly chosen main road has larger edge betweenness than a randomly chosen secondary road.
+```{r probability that a randomly chosen main road has larger edge betweenness than a randomly chosen secondary road}
+# function to compare probability that a randomly chosen main road has larger edge betweenness than a randomly chosen secondary road
+prob_larger_edge_betweenness <- function(main, secondary) {
+  compared_betweenness <- outer(main, secondary, ">")
+  mean(compared_betweenness)
+}
+
+# compute interquartile range for the betweenness
+edge_betweenness_road_type_provinces_stats_df <- edge_betweenness_road_type_provinces_no_Italy_region_df %>% 
+  group_by(region, Type) %>%
+  summarise(
+    median = median(edge_betweenness),
+    iqr = IQR(edge_betweenness),
+    edge_betweenness = list(edge_betweenness),
+    .groups = "drop"
+  )
+
+# transform into wide format and omit regions with only one kind of roads
+edge_betweenness_road_type_provinces_stats_wide_df <- edge_betweenness_road_type_provinces_stats_df %>%
+  pivot_wider(
+    names_from = Type,
+    values_from = c(median, iqr, edge_betweenness)
+) %>% na.omit()
+  
+# ratio of medians
+edge_betweenness_road_type_provinces_stats_wide_df$median_ratio <-edge_betweenness_road_type_provinces_stats_wide_df$`median_Main Road`/edge_betweenness_road_type_provinces_stats_wide_df$`median_Secondary Road`
+
+# apply function
+edge_betweenness_road_type_provinces_stats_wide_df$probability_betweenness <-
+  mapply(
+    prob_larger_edge_betweenness,
+    edge_betweenness_road_type_provinces_stats_wide_df$`edge_betweenness_Main Road`,
+    edge_betweenness_road_type_provinces_stats_wide_df$`edge_betweenness_Secondary Road`
+  )
+
+# modify province map to include Italia
+Italia_sf <- st_union(provinces_sf[str_detect(provinces_sf$province,"Regio"),])
+provinces_and_Italia_sf <- provinces_sf %>%
+  mutate(
+    region  = ifelse(
+      province %in% provinces_sf$province[str_detect(provinces_sf$province,"Regio")],
+      "Italia",
+      province
+      )) %>%
+  group_by(region) %>%
+  summarise()
+
+# add data to sf for choropleth
+provinces_and_Italia_sf <- provinces_and_Italia_sf %>% 
+  left_join(edge_betweenness_road_type_provinces_stats_wide_df, by = "region")
+```
+
+Plot a choropleth showing the probability that a randomly chosen main road has larger edge betweenness than a randomly chosen secondary road.
+```{r choropleth of probability main road vs secondary road}
+# reduce resolution before creating choropleth
+provinces_and_Italia_sf_small <- provinces_and_Italia_sf |>
+  st_transform(3857) |>
+  st_simplify(dTolerance = 1000) |>
+  st_transform(4326)
+world_nb_small_sf <- world_nb_sf |>
+  st_transform(3857) |>
+  st_simplify(dTolerance = 1000) |>
+  st_transform(4326)
+
+# plot choropleth
+choropleth_betweenness <- ggplot(provinces_and_Italia_sf_small) +
+  
+  # background map
+  geom_sf(data = world_nb_small_sf, 
+          color = "lightgray",
+          fill = "lightgray")+
+  
+  # regions
+  geom_sf(
+    aes(fill = probability_betweenness - 0.5),
+    color = "white",
+    linewidth = 0.2
+  ) +
+
+  # color palette
+  scale_fill_gradient2(
+    low = "#2C7BB6",
+    mid = "white",
+    high = "#D95F02",
+    midpoint = 0,
+    limits = c(-0.5, 0.5),
+    name = "P(main > secondary)-0.5",
+    na.value = "grey80"
+  ) +
+  
+  # observation window
+  coord_sf(xlim = c(min_lon+1.25, max_lon-1.25), 
+             ylim = c(min_lat+1.25, max_lat-1.25)) +
+  
+  theme_minimal() +
+  
+  labs(
+    title = "Edge betweenness by road type",
+    #subtitle = "Probability that a main road has higher betweenness than a secondary road"
+    subtitle = "P(main > secondary) -0.5"
+  )
+
+# extract legend
+choropleth_betweenness_legend <- get_legend(choropleth_betweenness)
+
+# figure without legend
+choropleth_betweenness_nolegend <- choropleth_betweenness + theme(legend.position = "none")
+
+# save figures (with and without legend)
+ggsave("choropleth_betweenness.svg", choropleth_betweenness, width = 180, height = 74, units = "mm")
+ggsave("choropleth_betweenness_legend.svg", choropleth_betweenness_legend, width = 88, height = 74, units = "mm")
+ggsave("choropleth_betweenness_no_legend.svg", choropleth_betweenness_nolegend, width = 88, height = 74, units = "mm")
+ggsave("choropleth_betweenness.jpg", choropleth_betweenness, width = 180, height = 74, units = "mm")
+```
+
+Add a lollipop graph as a companion to the choropleth
+```{r lollipop for betweenness}
+# rewrite data in suitable form 
+lollipop_data <- edge_betweenness_road_type_provinces_stats_wide_df %>%
+  mutate(
+    divergence = probability_betweenness - 0.5,
+    direction  = if_else(divergence >= 0, "Main dominates", "Secondary dominates"),
+    region_name = fct_reorder(region, divergence)
+  )
+
+# define plot
+lollipop_plot <- ggplot(lollipop_data, aes(x = divergence, y = region_name, color = direction)) +
+
+  # draw a vertical reference line at 0
+  geom_vline(xintercept = 0, color = "gray40", linewidth = 0.4, linetype = "dashed") +
+
+  # create sticks
+  geom_segment(
+    aes(x = 0, xend = divergence, y = region_name, yend = region_name),
+    linewidth = 0.1
+  ) +
+
+  # create dots
+  geom_point(size = 1) +
+
+  # colour consistent with your choropleth
+  scale_color_manual(
+    values = c("Main dominates"      = "#D95F02",
+               "Secondary dominates" = "#2C7BB6"),
+    name   = NULL
+  ) +
+
+  # ticks 
+  scale_x_continuous(
+    limits = c(-0.3, 0.4),
+    breaks = seq(-0.3, 0.4, 0.1),
+    labels = scales::label_number(style_positive = "plus")  # shows +0.1, -0.1 etc.
+  ) +
+
+  # labels
+  labs(
+    x        = "P(main > secondary) − 0.5",
+    y        = NULL,
+    title    = "Edge betweenness by road type",
+    subtitle = "Positive = main roads tend to have higher betweenness"
+  ) +
+
+  # define theme
+  theme_minimal() +
+  theme(
+    panel.grid.major.y = element_blank(),   
+    panel.grid.minor   = element_blank(),
+    panel.grid.major.x = element_line(color = "gray90", linewidth = 0.3),
+    legend.position= "none",
+    axis.text.y        = element_text(size = 5),
+    axis.text.x        = element_text(size = 5),
+    axis.title=element_text(size=5,face="bold"),
+    plot.title = element_text(size=6, face = "bold"),
+    plot.subtitle = element_text(size=6, face = "bold"),
+    #legend.text = element_text(size = 3)
+  )
+ggsave("choropleth_companion.svg", lollipop_plot, width = 88, height = 74, units = "mm")
+```
+
+Same as above, but horizontal
+```{r lollipop plot horizontal}
+# define plot
+lollipop_plot_hor <- ggplot(lollipop_data, aes(x = region_name, y = divergence, color = direction)) +
+
+  # draw a vertical reference line at 0
+  geom_hline(yintercept = 0, color = "gray40", linewidth = 0.4, linetype = "dashed") +
+
+  # create sticks
+  geom_segment(
+    aes(x = region_name, xend = region_name, y = 0, yend = divergence),
+    linewidth = 0.3
+  ) +
+
+  # create dots
+  geom_point(size = 1.5) +
+
+  # colour consistent with your choropleth
+  scale_color_manual(
+    values = c("Main dominates"      = "#D95F02",
+               "Secondary dominates" = "#2C7BB6"),
+    name   = NULL
+  ) +
+
+  # ticks 
+  scale_y_continuous(
+    limits = c(-0.3, 0.4),
+    breaks = seq(-0.3, 0.4, 0.1),
+    labels = scales::label_number(style_positive = "plus")  # shows +0.1, -0.1 etc.
+  ) +
+
+  # labels
+  labs(
+    y        = "P(main > secondary) − 0.5",
+    x        = NULL,
+    title    = "Edge betweenness by road type",
+    subtitle = "Positive = main roads tend to have higher betweenness"
+  ) +
+
+  # define theme
+  theme_minimal() +
+  theme(
+    panel.grid.major.x = element_blank(),   
+    panel.grid.minor   = element_blank(),
+    panel.grid.major.y = element_line(color = "gray90", linewidth = 0.3),
+    legend.position= "none",
+    axis.text.y        = element_text(size = 6),
+    #axis.text.x        = element_text(size = 5),
+    axis.title=element_text(size=6,face="bold"),
+    plot.title = element_text(size=8, face = "bold"),
+    plot.subtitle = element_text(size=6, face = "bold"),
+    axis.text.x        = element_text(size = 6, angle = 45, hjust = 1)
+    #legend.text = element_text(size = 3)
+  )
+ggsave("choropleth_companion_hor.svg", lollipop_plot_hor, width = 88, height = 74, units = "mm")
+ggsave("choropleth_companion_hor_big.svg", lollipop_plot_hor, width = 180, height = 74, units = "mm")
+ggsave("choropleth_companion_hor.jpg", lollipop_plot_hor, width = 88, height = 74, units = "mm")
+ggsave("choropleth_companion_hor_big.jpg", lollipop_plot_hor, width = 180, height = 74, units = "mm")
 ```
 
 ### Robustness of results
@@ -2674,7 +2918,7 @@ for (gu in geographical_units) {
 
 # add lon lat by r
 cities_centrality <- cities_centrality %>% cbind(data.frame(st_coordinates(cities_centrality)) %>% setNames(c("lon","lat")))
-write.csv(st_drop_geometry(cities_centrality),"results/cities_centrality.csv")
+#write.csv(st_drop_geometry(cities_centrality),"results/cities_centrality.csv")
 ```
 
 ### Correlation between structural properties and cities/capitals locations at the Empire level
@@ -2699,52 +2943,68 @@ for (gu in geographical_units) {
 
 For each geographical unit, check if top five closest nodes are in the top centrality quartile.
 ```{r capital centrality quantile}
+# extract vertex attributes
+vertex_attr_Empire_df <- road_networks_l$Empire %>%
+  vertex_attr() %>%
+  as.data.frame()
+
 # initialise df
 capital_centrality_Empire <- data.frame(
-  province = rep(geographical_units,each=5),
-  distance_rank = rep(1:5,length(geographical_units)),
+  province = rep(geographical_units, each = 5),
+  distance_rank = rep(1:5, length(geographical_units)),
+  
   distance = NA,
+  
+  betweenness = NA,
+  degree = NA,
+  closeness = NA,
+  eigenvector = NA,
+  
   betweenness_quantile = NA,
-  closeness_quantile = NA,
   degree_quantile = NA,
+  closeness_quantile = NA,
   eigenvector_quantile = NA
 )
 
-# populate the df
-# for each unit, find distance
 for (gu in geographical_units) {
-  # extract df of vertex attributes
-  vertex_attr_Empire_df <- road_networks_l$Empire %>%
-    vertex_attr() %>%
-    as.data.frame()
-  
-  # extract distance for the gu 
-  distance_capital_to_Empire_nodes_gu <-  distance_capital_to_Empire_nodes_l[[gu]]
-  
-  # sort vertex attributes by distance to the gu capital
-  vertex_attr_Empire_df <-
-    vertex_attr_Empire_df[order(distance_capital_to_Empire_nodes_gu),]
- 
-  # fill df
-  capital_centrality_Empire[capital_centrality_Empire$province == gu, "distance"] <- sort(distance_capital_to_Empire_nodes_gu)[1:5]
-  capital_centrality_Empire[capital_centrality_Empire$province == gu, "betweenness"] <- vertex_attr_Empire_df$betweenness[1:5]
-  capital_centrality_Empire[capital_centrality_Empire$province == gu, "degree"] <- vertex_attr_Empire_df$degree[1:5]
-  capital_centrality_Empire[capital_centrality_Empire$province == gu, "closeness"] <- vertex_attr_Empire_df$closeness[1:5]
-  capital_centrality_Empire[capital_centrality_Empire$province == gu, "eigenvector"] <- vertex_attr_Empire_df$eigenvector[1:5]
-  capital_centrality_Empire[capital_centrality_Empire$province == gu, "betweenness_quantile"] <-
-    ecdf(vertex_attr_Empire_df$betweenness)(vertex_attr_Empire_df$betweenness[1:5])
-  capital_centrality_Empire[capital_centrality_Empire$province == gu, "degree_quantile"] <- 
-    ecdf(vertex_attr_Empire_df$degree)(vertex_attr_Empire_df$degree[1:5])
-  capital_centrality_Empire[capital_centrality_Empire$province == gu, "closeness_quantile"] <-
-    ecdf(vertex_attr_Empire_df$closeness)(vertex_attr_Empire_df$closeness[1:5])
-  capital_centrality_Empire[capital_centrality_Empire$province == gu, "closeness_quantile"] <-
-    ecdf(vertex_attr_Empire_df$closeness)(vertex_attr_Empire_df$closeness[1:5])
-  capital_centrality_Empire[capital_centrality_Empire$province == gu, "eigenvector_quantile"] <-
-    ecdf(vertex_attr_Empire_df$eigenvector)(vertex_attr_Empire_df$eigenvector[1:5])
+
+  distance_vec <- distance_capital_to_Empire_nodes_l[[gu]]
+
+  # order nodes by distance
+  idx <- order(distance_vec)
+
+  # sorted node attributes
+  v_sorted <- vertex_attr_Empire_df[idx, ]
+
+  rows_gu <- capital_centrality_Empire$province == gu
+
+  # closest distances
+  capital_centrality_Empire[rows_gu, "distance"] <- distance_vec[idx][1:5]
+
+  # centralities
+  capital_centrality_Empire[rows_gu, "betweenness"] <- v_sorted$betweenness[1:5]
+  capital_centrality_Empire[rows_gu, "degree"] <- v_sorted$degree[1:5]
+  capital_centrality_Empire[rows_gu, "closeness"] <- v_sorted$closeness[1:5]
+  capital_centrality_Empire[rows_gu, "eigenvector"] <- v_sorted$eigenvector[1:5]
+
+  # empirical quantiles
+  capital_centrality_Empire[rows_gu, "betweenness_quantile"] <-
+    ecdf(v_sorted$betweenness)(v_sorted$betweenness[1:5])
+
+  capital_centrality_Empire[rows_gu, "degree_quantile"] <-
+    ecdf(v_sorted$degree)(v_sorted$degree[1:5])
+
+  capital_centrality_Empire[rows_gu, "closeness_quantile"] <-
+    ecdf(v_sorted$closeness)(v_sorted$closeness[1:5])
+
+  capital_centrality_Empire[rows_gu, "eigenvector_quantile"] <-
+    ecdf(v_sorted$eigenvector)(v_sorted$eigenvector[1:5])
 }
 
-# export results
-write.csv(capital_centrality_Empire,"results/capital_centrality_Empire.csv")
+#write.csv(
+#  capital_centrality_Empire,
+#  "results/capital_centrality_Empire.csv",
+#)
 ```
 
 ### Correlation between structural properties population in Hanson.

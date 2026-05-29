@@ -157,17 +157,12 @@ Pleiades_sf <- read_sf("./data/ancient_sites_pleiades/pleiades_sett_vil_st_fort.
 world_sf <- read_sf("./data/world_administrative_boundaries/world_administrative_boundaries.shp")
 ```
 
-Modern road data. Remark: the world_roads_v10 folder on Github needs to be unzipped before running this code
+Modern road data. The original ESRI world road network can be downloaded from https://www.arcgis.com/home/item.html?id=83535020ce154bd5a498957c159e3a99. 
+Use 7-zip to unzip the lpk file and place it in the data folder for this project. 
+Then read the .gdb as an sf by running the following.
 ```{r load modern road data}
-# Due to the large size of the file, the version on Github is compressed.
-# Unzip it. Then run the following code:
-modern_roads_sf <- read_sf("./data/world_roads_v10/v10/roads.gdb")
-
-# Alternative:
-## The original ESRI world road network can be downloaded from https://www.arcgis.com/home/item.html?id=83535020ce154bd5a498957c159e3a99. 
-## Use 7-zip to unzip the lpk file and place it in the data folder for this project. 
-## Then read the .gdb as an sf by running:
-# modern_roads_sf <- read_sf("./data/World_Roads/v10/roads.gdb")
+#Remark: BEFORE running this line, download the data as detailed above. This is the resulting local path.  
+modern_roads_sf <- read_sf("./data/World_Roads/v10/roads.gdb")
 ```
 
 Ensure that all the data is in sf format, contains only valid columns, and is in the same coordinate reference system (epsg:4326)

@@ -127,4 +127,5 @@ Expected runtime: 25 seconds
 ## Instruction for use
 Run network-analysis.Rmd in R. 
 Ensure all data is accessible in folder ("./data"). 
-Remark: the world_roads_v10 data folder on Github is compressed because of its size, and needs to be unzipped before running this code.
+Remark: the modern road data (world_roads_v10) is not on GitHub and needs to be downloaded from https://www.arcgis.com/home/item.html?id=83535020ce154bd5a498957c159e3a99.
+Use 7-zip to unzip the lpk file and place it in the data folder for this project. Then read the .gdb as an sf by running the code. 
